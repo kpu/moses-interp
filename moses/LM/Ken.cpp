@@ -47,10 +47,10 @@ using namespace std;
 namespace Moses {
 namespace {
 
-struct KenLMState : public FFState {
-  lm::ngram::State state;
+template <class S> struct KenLMState : public FFState {
+  S state;
   int Compare(const FFState &o) const {
-    const KenLMState &other = static_cast<const KenLMState &>(o);
+    const KenLMState<S> &other = static_cast<const KenLMState<S> &>(o);
     if (state.length < other.state.length) return -1;
     if (state.length > other.state.length) return 1;
     return std::memcmp(state.words, other.state.words, sizeof(lm::WordIndex) * state.length);
@@ -77,7 +77,7 @@ template <class Model> class LanguageModelKen : public LanguageModel {
     }
 
     const FFState *EmptyHypothesisState(const InputType &/*input*/) const {
-      KenLMState *ret = new KenLMState();
+      KenLMState<typename Model::State> *ret = new KenLMState<typename Model::State>();
       ret->state = m_ngram->BeginSentenceState();
       return ret;
     }
@@ -223,9 +223,10 @@ template <class Model> void LanguageModelKen<Model>::CalcScore(const Phrase &phr
 }
 
 template <class Model> FFState *LanguageModelKen<Model>::Evaluate(const Hypothesis &hypo, const FFState *ps, ScoreComponentCollection *out) const {
-  const lm::ngram::State &in_state = static_cast<const KenLMState&>(*ps).state;
+  typedef KenLMState<typename Model::State> StateWrap;
+  const typename Model::State &in_state = static_cast<const StateWrap&>(*ps).state;
 
-  std::auto_ptr<KenLMState> ret(new KenLMState());
+  std::auto_ptr<StateWrap> ret(new StateWrap());
   
   if (!hypo.GetCurrTargetLength()) {
     ret->state = in_state;
