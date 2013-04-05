@@ -19,6 +19,7 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 ***********************************************************************/
 
+#include <boost/lexical_cast.hpp>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -27,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include "lm/enumerate_vocab.hh"
 #include "lm/left.hh"
 #include "lm/model.hh"
+#include "util/tokenize_piece.hh"
 
 #include "Ken.h"
 #include "Base.h"
@@ -51,9 +53,7 @@ template <class S> struct KenLMState : public FFState {
   S state;
   int Compare(const FFState &o) const {
     const KenLMState<S> &other = static_cast<const KenLMState<S> &>(o);
-    if (state.length < other.state.length) return -1;
-    if (state.length > other.state.length) return 1;
-    return std::memcmp(state.words, other.state.words, sizeof(lm::WordIndex) * state.length);
+    return other.state.Compare(state);
   }
 };
 
@@ -85,24 +85,24 @@ template <class Model> class VocabWrap {
         model_(file.c_str(), MakeConfig(lazy)),
         factor_type_(factor_type) {}
 
-    State BeginSentenceState() const {
+    const State &BeginSentenceState() const {
       return model_.BeginSentenceState();
     }
 
-    State NullContextState() const {
+    const State &NullContextState() const {
       return model_.NullContextState();
     }
 
-    float Score(const State &state, const Word &word, State &out) {
+    float Score(const State &state, const Word &word, State &out) const {
       return model_.Score(state, TranslateID(word), out);
     }
 
-    float EndSentence(const Hypothesis &hypo, State &out) {
+    float EndSentence(const Hypothesis &hypo, State &out) const {
       lm::WordIndex indices[KENLM_MAX_ORDER - 1];
       return model_.FullScoreForgotState(indices, LastIDs(hypo, indices), model_.GetVocabulary().EndSentence(), out).prob;
     }
 
-    void GetState(const Hypothesis &hypo, State &out) {
+    void GetState(const Hypothesis &hypo, State &out) const {
       lm::WordIndex indices[KENLM_MAX_ORDER - 1];
       model_.GetState(indices, LastIDs(hypo, indices), out);
     }
@@ -153,17 +153,28 @@ template <class Model> class VocabWrap {
     FactorType factor_type_;
 };
 
-/*class InterpWrap {
+class InterpWrap {
   public:
     struct State {
       lm::ngram::State first, second;
+      int Compare(const State &other) const {
+        int ret = first.Compare(other.first);
+        if (ret) return ret;
+        return second.Compare(other.second);
+      }
     };
 
-    InterpWrap() {
+    InterpWrap(const std::string &file, FactorType factorType, bool lazy) 
+      : first_(FirstName(file), factorType, lazy), second_(SecondName(file), factorType, lazy) {
       begin_sentence_.first = first_.BeginSentenceState();
       begin_sentence_.second = second_.BeginSentenceState();
       null_context_.first = first_.NullContextState();
       null_context_.second = second_.NullContextState();
+      util::TokenIter<util::SingleCharacter> it(file, ':');
+      ++it;
+      ++it;
+      first_weight_ = boost::lexical_cast<float>(*it);
+      second_weight_ = 1.0 - first_weight_;
     }
 
     const State &BeginSentenceState() const {
@@ -174,14 +185,48 @@ template <class Model> class VocabWrap {
       return null_context_;
     }
 
+    float Score(const State &state, const Word &word, State &out) const {
+      return Mix(
+          first_.Score(state.first, word, out.first),
+          second_.Score(state.second, word, out.second));
+    }
 
+    float EndSentence(const Hypothesis &hypo, State &out) const {
+      return Mix(
+          first_.EndSentence(hypo, out.first),
+          second_.EndSentence(hypo, out.second));
+    }
+
+    void GetState(const Hypothesis &hypo, State &out) const {
+      first_.GetState(hypo, out.first);
+      second_.GetState(hypo, out.second);
+    }
+
+    unsigned char Order() const {
+      return 5;
+    }
 
   private:
-    lm::ngram::Model first_;
-    lm::ngram::QuantArrayTrieModel second_;
+    float Mix(float first, float second) const {
+      return log10(pow(10.0, first) * first_weight_ + pow(10.0, second) * second_weight_);
+    }
 
-    State begin_sentence_;
-};*/
+    static std::string FirstName(const std::string &file) {
+      return util::TokenIter<util::SingleCharacter>(file, ':')->as_string();
+    }
+    static std::string SecondName(const std::string &file) {
+      util::TokenIter<util::SingleCharacter> it(file, ':');
+      ++it;
+      return it->as_string();
+    }
+
+    const VocabWrap<lm::ngram::Model> first_;
+    const VocabWrap<lm::ngram::QuantArrayTrieModel> second_;
+
+    State begin_sentence_, null_context_;
+
+    float first_weight_, second_weight_;
+};
 
 /*
  * An implementation of single factor LM using Ken's code.
@@ -360,6 +405,8 @@ LanguageModel *ConstructKenLM(const std::string &file, FactorType factorType, bo
     } else {
       return new LanguageModelKen<VocabWrap<lm::ngram::ProbingModel> >(file, factorType, lazy);
     }
+  } catch (util::ErrnoException &e) {
+    return new LanguageModelKen<InterpWrap>(file, factorType, lazy);
   } catch (std::exception &e) {
     std::cerr << e.what() << std::endl;
     abort();
