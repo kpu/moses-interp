@@ -50,13 +50,11 @@ namespace Moses
 namespace
 {
 
-struct KenLMState : public FFState {
-  lm::ngram::State state;
+template <class State> struct KenLMState : public FFState {
+  State state;
   int Compare(const FFState &o) const {
     const KenLMState &other = static_cast<const KenLMState &>(o);
-    if (state.length < other.state.length) return -1;
-    if (state.length > other.state.length) return 1;
-    return std::memcmp(state.words, other.state.words, sizeof(lm::WordIndex) * state.length);
+    return state.Compare(other.state);
   }
 };
 
@@ -140,7 +138,7 @@ private:
 } // namespace
 
 template <class Model> LanguageModelKen<Model>::LanguageModelKen(const std::string &line, const std::string &file, FactorType factorType, bool lazy)
-  :LanguageModel(line)
+  :LanguageModel("KENLM", line)
   ,m_factorType(factorType)
 {
   lm::ngram::Config config;
@@ -161,7 +159,7 @@ template <class Model> LanguageModelKen<Model>::LanguageModelKen(const std::stri
 }
 
 template <class Model> LanguageModelKen<Model>::LanguageModelKen(const LanguageModelKen<Model> &copy_from)
-  :LanguageModel(copy_from.GetArgLine()),
+  :LanguageModel(copy_from.GetScoreProducerDescription(), copy_from.GetArgLine()),
    m_ngram(copy_from.m_ngram),
 // TODO: don't copy this.
    m_lmIdLookup(copy_from.m_lmIdLookup),
@@ -172,7 +170,7 @@ template <class Model> LanguageModelKen<Model>::LanguageModelKen(const LanguageM
 
 template <class Model> const FFState * LanguageModelKen<Model>::EmptyHypothesisState(const InputType &/*input*/) const
 {
-  KenLMState *ret = new KenLMState();
+  KenLMState<typename Model::State> *ret = new KenLMState<typename Model::State>();
   ret->state = m_ngram->BeginSentenceState();
   return ret;
 }
@@ -230,9 +228,10 @@ template <class Model> void LanguageModelKen<Model>::CalcScore(const Phrase &phr
 
 template <class Model> FFState *LanguageModelKen<Model>::Evaluate(const Hypothesis &hypo, const FFState *ps, ScoreComponentCollection *out) const
 {
-  const lm::ngram::State &in_state = static_cast<const KenLMState&>(*ps).state;
+  typedef KenLMState<typename Model::State> Wrapped;
+  const lm::ngram::State &in_state = static_cast<const Wrapped&>(*ps).state;
 
-  std::auto_ptr<KenLMState> ret(new KenLMState());
+  std::auto_ptr<Wrapped> ret(new Wrapped());
 
   if (!hypo.GetCurrTargetLength()) {
     ret->state = in_state;
