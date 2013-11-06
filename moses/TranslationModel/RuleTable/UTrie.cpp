@@ -39,15 +39,15 @@ namespace Moses
 {
 
 TargetPhraseCollection &RuleTableUTrie::GetOrCreateTargetPhraseCollection(
-    const Phrase &source, const TargetPhrase &target, const Word &sourceLHS)
+  const Phrase &source, const TargetPhrase &target, const Word *sourceLHS)
 {
   UTrieNode &currNode = GetOrCreateNode(source, target, sourceLHS);
   return currNode.GetOrCreateTargetPhraseCollection(target);
 }
 
 UTrieNode &RuleTableUTrie::GetOrCreateNode(const Phrase &source,
-                                           const TargetPhrase &target,
-                                           const Word &/*sourceLHS*/)
+    const TargetPhrase &target,
+    const Word */*sourceLHS*/)
 {
   const size_t size = source.GetSize();
 
@@ -76,12 +76,12 @@ UTrieNode &RuleTableUTrie::GetOrCreateNode(const Phrase &source,
 }
 
 ChartRuleLookupManager *RuleTableUTrie::CreateRuleLookupManager(
-  const InputType &sentence,
+  const ChartParser &parser,
   const ChartCellCollectionBase &cellCollection)
 {
   // FIXME This should be a parameter to CreateRuleLookupManager
   size_t maxChartSpan = 0;
-  return new Scope3Parser(sentence, cellCollection, *this, maxChartSpan);
+  return new Scope3Parser(parser, cellCollection, *this, maxChartSpan);
 }
 
 void RuleTableUTrie::SortAndPrune()

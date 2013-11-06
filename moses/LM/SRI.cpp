@@ -31,6 +31,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include "moses/Phrase.h"
 #include "moses/StaticData.h"
 
+// By default, SRILM defines a function called zopen.
+//
+// However, on Mac OS X (and possibly other BSDs),
+// <stdio.h> already defines a zopen function.
+//
+// To resolve this conflict, SRILM checks to see if HAVE_ZOPEN is defined.
+// If it is, SRILM will rename its zopen function as my_zopen.
+//
+// So, before importing any SRILM headers,
+// it is important to define HAVE_ZOPEN if we are on an Apple OS:
+//
+#ifdef __APPLE__
+#define HAVE_ZOPEN
+#endif
+
 #include "Vocab.h"
 #include "Ngram.h"
 
@@ -38,10 +53,12 @@ using namespace std;
 
 namespace Moses
 {
-LanguageModelSRI::LanguageModelSRI()
-  : m_srilmVocab(0)
-  , m_srilmModel(0)
+LanguageModelSRI::LanguageModelSRI(const std::string &line)
+  :LanguageModelSingleFactor(line)
+  ,m_srilmVocab(0)
+  ,m_srilmModel(0)
 {
+  ReadParameters();
 }
 
 LanguageModelSRI::~LanguageModelSRI()
@@ -50,26 +67,19 @@ LanguageModelSRI::~LanguageModelSRI()
   delete m_srilmVocab;
 }
 
-bool LanguageModelSRI::Load(const std::string &filePath
-                            , FactorType factorType
-                            , size_t nGramOrder)
+void LanguageModelSRI::Load()
 {
   m_srilmVocab  = new ::Vocab();
-  m_srilmModel	= new Ngram(*m_srilmVocab, nGramOrder);
-  m_factorType 	= factorType;
-  m_nGramOrder	= nGramOrder;
-  m_filePath		= filePath;
+  m_srilmModel	= new Ngram(*m_srilmVocab, m_nGramOrder);
 
   m_srilmModel->skipOOVs() = false;
 
-  File file( filePath.c_str(), "r" );
+  File file( m_filePath.c_str(), "r" );
   m_srilmModel->read(file);
 
   // LM can be ok, just outputs warnings
   CreateFactors();
   m_unknownId = m_srilmVocab->unkIndex();
-
-  return true;
 }
 
 void LanguageModelSRI::CreateFactors()
@@ -95,13 +105,13 @@ void LanguageModelSRI::CreateFactors()
   factorId = m_sentenceStart->GetId();
   lmIdMap[factorId] = GetLmID(BOS_);
   maxFactorId = (factorId > maxFactorId) ? factorId : maxFactorId;
-  m_sentenceStartArray[m_factorType] = m_sentenceStart;
+  m_sentenceStartWord[m_factorType] = m_sentenceStart;
 
   m_sentenceEnd		= factorCollection.AddFactor(Output, m_factorType, EOS_);
   factorId = m_sentenceEnd->GetId();
   lmIdMap[factorId] = GetLmID(EOS_);
   maxFactorId = (factorId > maxFactorId) ? factorId : maxFactorId;
-  m_sentenceEndArray[m_factorType] = m_sentenceEnd;
+  m_sentenceEndWord[m_factorType] = m_sentenceEnd;
 
   // add to lookup vector in object
   m_lmIdLookup.resize(maxFactorId+1);

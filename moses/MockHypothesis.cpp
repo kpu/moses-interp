@@ -19,7 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 
 
-#include "MockHypothesis.h" 
+#include "MockHypothesis.h"
 
 #include <boost/test/unit_test.hpp>
 
@@ -28,17 +28,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 using namespace Moses;
 using namespace std;
 
-namespace MosesTest {
+namespace MosesTest
+{
 
 
 MockHypothesisGuard::MockHypothesisGuard(
-    const string& sourceSentence,
-    const vector<Alignment>& alignments,
-    const vector<string>& targetSegments) 
-: m_emptyTarget(),
-  m_sentence(),
-  m_system("mock",&m_wp,&m_uwp,&m_dist),
-  m_manager(0,m_sentence,Normal,&m_system)
+  const string& sourceSentence,
+  const vector<Alignment>& alignments,
+  const vector<string>& targetSegments)
+  : m_initialTransOpt(),
+    m_sentence(),
+    m_wp("WordPenalty"),
+    m_uwp("UnknownWordPenalty"),
+    m_dist("Distortion"),
+    m_manager(0,m_sentence,Normal)
 {
   BOOST_CHECK_EQUAL(alignments.size(), targetSegments.size());
 
@@ -47,30 +50,29 @@ MockHypothesisGuard::MockHypothesisGuard(
 
   stringstream in(sourceSentence + "\n");
   m_sentence.Read(in,factors);
-  
+
 
   //Initial empty hypothesis
   m_manager.ResetSentenceStats(m_sentence);
-  m_hypothesis = Hypothesis::Create(m_manager, m_sentence, m_emptyTarget);
+  m_hypothesis = Hypothesis::Create(m_manager, m_sentence, m_initialTransOpt);
 
   //create the chain
   vector<Alignment>::const_iterator ai = alignments.begin();
   vector<string>::const_iterator ti = targetSegments.begin();
-  for (; ti != targetSegments.end() && ai != alignments.end(); ++ti,++ai)
-  {
+  for (; ti != targetSegments.end() && ai != alignments.end(); ++ti,++ai) {
     Hypothesis* prevHypo = m_hypothesis;
     WordsRange wordsRange(ai->first,ai->second);
     m_targetPhrases.push_back(TargetPhrase());
-    m_targetPhrases.back().CreateFromString(factors,*ti,"|");
+    m_targetPhrases.back().CreateFromString(Input, factors, *ti, "|", NULL);
     m_toptions.push_back(new TranslationOption
-      (wordsRange,m_targetPhrases.back(),m_sentence));
-    m_hypothesis =  Hypothesis::Create(*prevHypo,*m_toptions.back(),NULL); 
+                         (wordsRange,m_targetPhrases.back()));
+    m_hypothesis =  Hypothesis::Create(*prevHypo,*m_toptions.back());
   }
 
 
 }
 
-MockHypothesisGuard::~MockHypothesisGuard() 
+MockHypothesisGuard::~MockHypothesisGuard()
 {
   RemoveAllInColl(m_toptions);
   while (m_hypothesis) {

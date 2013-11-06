@@ -40,7 +40,9 @@ namespace Moses
 
 class PhraseDictionary;
 class GenerationDictionary;
+class FeatureFunction;
 class LexicalReordering;
+
 
 /** Available phrase translation for a particular sentence pair.
  * In a multi-factor model, this is expanded from the entries in the
@@ -63,39 +65,23 @@ class TranslationOption
 
 protected:
 
-  TargetPhrase 							m_targetPhrase; /*< output phrase when using this translation option */
-  const WordsRange		m_sourceWordsRange; /*< word position in the input that are covered by this translation option */
-  float               m_futureScore; /*< estimate of total cost when using this translation option, includes language model probabilities */
+  TargetPhrase 		m_targetPhrase; /*< output phrase when using this translation option */
+  const InputPath		*m_inputPath;
+  const WordsRange	m_sourceWordsRange; /*< word position in the input that are covered by this translation option */
+  float             m_futureScore; /*< estimate of total cost when using this translation option, includes language model probabilities */
 
-  //! in TranslationOption, m_scoreBreakdown is not complete.  It cannot,
-  //! for example, know the full n-gram score since the length of the
-  //! TargetPhrase may be shorter than the n-gram order.  But, if it is
-  //! possible to estimate, it is included here.
-  ScoreComponentCollection	m_scoreBreakdown;
-
-  typedef std::map<const ScoreProducer *, Scores> _ScoreCacheMap;
-  _ScoreCacheMap m_cachedScores;
+  typedef std::map<const LexicalReordering*, Scores> _ScoreCacheMap;
+  _ScoreCacheMap m_lexReorderingScores;
 
 public:
+  explicit TranslationOption(); // For initial hypo that does translate nothing
+
   /** constructor. Used by initial translation step */
   TranslationOption(const WordsRange &wordsRange
-                    , const TargetPhrase &targetPhrase
-                    , const InputType &inputType);
-  /** constructor. Used to create trans opt from unknown word */
-  TranslationOption(const WordsRange &wordsRange
-                    , const TargetPhrase &targetPhrase
-                    , const InputType &inputType
-                    , const UnknownWordPenaltyProducer* uwpProducer);
-
-  /** copy constructor, but change words range. used by caching */
-  TranslationOption(const TranslationOption &copy, const WordsRange &sourceWordsRange);
-
+                    , const TargetPhrase &targetPhrase);
 
   /** returns true if all feature types in featuresToCheck are compatible between the two phrases */
   bool IsCompatible(const Phrase& phrase, const std::vector<FactorType>& featuresToCheck) const;
-
-  /** used when precomputing (composing) translation options */
-  void MergeNewFeatures(const Phrase& phrase, const ScoreComponentCollection& score, const std::vector<FactorType>& featuresToMerge);
 
   /** returns target phrase */
   inline const TargetPhrase &GetTargetPhrase() const {
@@ -108,9 +94,9 @@ public:
   }
 
   /** returns source phrase */
-  const Phrase *GetSourcePhrase() const {
-    return &(m_targetPhrase.GetSourcePhrase());
-  }
+  const InputPath &GetInputPath() const;
+
+  void SetInputPath(const InputPath &inputPath);
 
   /** whether source span overlaps with those of a hypothesis */
   bool Overlap(const Hypothesis &hypothesis) const;
@@ -142,36 +128,39 @@ public:
 
   /** returns detailed component scores */
   inline const ScoreComponentCollection &GetScoreBreakdown() const {
-    return m_scoreBreakdown;
+    return m_targetPhrase.GetScoreBreakdown();
   }
 
+  inline ScoreComponentCollection &GetScoreBreakdown() {
+    return m_targetPhrase.GetScoreBreakdown();
+  }
+
+  void Evaluate(const InputType &input);
+
   /** returns cached scores */
-  inline const Scores *GetCachedScores(const ScoreProducer *scoreProducer) const {
-    _ScoreCacheMap::const_iterator it = m_cachedScores.find(scoreProducer);
-    if(it == m_cachedScores.end())
+  inline const Scores *GetLexReorderingScores(const LexicalReordering *scoreProducer) const {
+    _ScoreCacheMap::const_iterator it = m_lexReorderingScores.find(scoreProducer);
+    if(it == m_lexReorderingScores.end())
       return NULL;
     else
       return &(it->second);
   }
 
-  /** Calculate future score and n-gram score of this trans option, plus the score breakdowns */
-  void CalcScore(const TranslationSystem* system);
-
-  void CacheScores(const ScoreProducer &scoreProducer, const Scores &score);
+  void CacheLexReorderingScores(const LexicalReordering &scoreProducer, const Scores &score);
 
   TO_STRING();
-	
-	bool operator== (const TranslationOption &rhs) const
-	{
+
+  bool operator== (const TranslationOption &rhs) const {
     return m_sourceWordsRange == rhs.m_sourceWordsRange &&
-      m_targetPhrase == rhs.m_targetPhrase;
-	}
+           m_targetPhrase == rhs.m_targetPhrase;
+  }
 
 };
 
 
 //XXX: This doesn't look at the alignment. Is this correct?
-inline size_t hash_value(const TranslationOption& translationOption) {
+inline size_t hash_value(const TranslationOption& translationOption)
+{
   size_t  seed = 0;
   boost::hash_combine(seed, translationOption.GetTargetPhrase());
   boost::hash_combine(seed, translationOption.GetStartPos());

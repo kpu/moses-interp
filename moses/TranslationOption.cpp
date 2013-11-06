@@ -22,10 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "TranslationOption.h"
 #include "WordsBitmap.h"
-#include "moses/TranslationModel/PhraseDictionaryMemory.h"
 #include "GenerationDictionary.h"
-#include "LMList.h"
-#include "LexicalReordering.h"
 #include "StaticData.h"
 #include "InputType.h"
 
@@ -34,52 +31,21 @@ using namespace std;
 namespace Moses
 {
 
-//TODO this should be a factory function!
-TranslationOption::TranslationOption(const WordsRange &wordsRange
-                                     , const TargetPhrase &targetPhrase
-                                     , const InputType &inputType)
-  : m_targetPhrase(targetPhrase)
-  , m_sourceWordsRange(wordsRange)
-  , m_scoreBreakdown(targetPhrase.GetScoreBreakdown())
-{}
-
-//TODO this should be a factory function!
-TranslationOption::TranslationOption(const WordsRange &wordsRange
-                                     , const TargetPhrase &targetPhrase
-                                     , const InputType &inputType
-                                     , const UnknownWordPenaltyProducer* up)
-  : m_targetPhrase(targetPhrase)
-  , m_sourceWordsRange	(wordsRange)
-  , m_futureScore(0)
+TranslationOption::TranslationOption()
+  :m_targetPhrase()
+  ,m_inputPath(NULL)
+  ,m_sourceWordsRange(NOT_FOUND, NOT_FOUND)
 {
-  if (up) {
-		const ScoreProducer *scoreProducer = (const ScoreProducer *)up; // not sure why none of the c++ cast works
-		vector<float> score(1);
-		score[0] = FloorScore(-numeric_limits<float>::infinity());
-		m_scoreBreakdown.Assign(scoreProducer, score);
-	}
 }
 
-TranslationOption::TranslationOption(const TranslationOption &copy, const WordsRange &sourceWordsRange)
-  : m_targetPhrase(copy.m_targetPhrase)
-//, m_sourcePhrase(new Phrase(*copy.m_sourcePhrase)) // TODO use when confusion network trans opt for confusion net properly implemented
-  , m_sourceWordsRange(sourceWordsRange)
-  , m_futureScore(copy.m_futureScore)
-  , m_scoreBreakdown(copy.m_scoreBreakdown)
-  , m_cachedScores(copy.m_cachedScores)
-{}
-
-void TranslationOption::MergeNewFeatures(const Phrase& phrase, const ScoreComponentCollection& score, const std::vector<FactorType>& featuresToAdd)
+//TODO this should be a factory function!
+TranslationOption::TranslationOption(const WordsRange &wordsRange
+                                     , const TargetPhrase &targetPhrase)
+  : m_targetPhrase(targetPhrase)
+  , m_inputPath(NULL)
+  , m_sourceWordsRange(wordsRange)
+  , m_futureScore(targetPhrase.GetFutureScore())
 {
-  CHECK(phrase.GetSize() == m_targetPhrase.GetSize());
-  if (featuresToAdd.size() == 1) {
-    m_targetPhrase.MergeFactors(phrase, featuresToAdd[0]);
-  } else if (featuresToAdd.empty()) {
-    /* features already there, just update score */
-  } else {
-    m_targetPhrase.MergeFactors(phrase, featuresToAdd);
-  }
-  m_scoreBreakdown.PlusEquals(score);
 }
 
 bool TranslationOption::IsCompatible(const Phrase& phrase, const std::vector<FactorType>& featuresToCheck) const
@@ -100,24 +66,29 @@ bool TranslationOption::Overlap(const Hypothesis &hypothesis) const
   return bitmap.Overlap(GetSourceWordsRange());
 }
 
-void TranslationOption::CalcScore(const TranslationSystem* system)
+void TranslationOption::CacheLexReorderingScores(const LexicalReordering &producer, const Scores &score)
 {
-  // LM scores
-  float ngramScore = 0;
-  float retFullScore = 0;
-  float oovScore = 0;
-
-  const LMList &allLM = system->GetLanguageModels();
-
-  allLM.CalcScore(GetTargetPhrase(), retFullScore, ngramScore, oovScore, &m_scoreBreakdown);
-
-  size_t phraseSize = GetTargetPhrase().GetSize();
-  
-  // future score
-  m_futureScore = retFullScore - ngramScore + oovScore
-                  + m_scoreBreakdown.InnerProduct(StaticData::Instance().GetAllWeights()) - phraseSize *
-                  system->GetWeightWordPenalty();
+  m_lexReorderingScores[&producer] = score;
 }
+
+void TranslationOption::Evaluate(const InputType &input)
+{
+  const InputPath &inputPath = GetInputPath();
+  m_targetPhrase.Evaluate(input, inputPath);
+}
+
+const InputPath &TranslationOption::GetInputPath() const
+{
+  CHECK(m_inputPath);
+  return *m_inputPath;
+}
+
+void TranslationOption::SetInputPath(const InputPath &inputPath)
+{
+  CHECK(m_inputPath == NULL);
+  m_inputPath = &inputPath;
+}
+
 
 TO_STRING_BODY(TranslationOption);
 
@@ -131,10 +102,6 @@ ostream& operator<<(ostream& out, const TranslationOption& possibleTranslation)
   return out;
 }
 
-void TranslationOption::CacheScores(const ScoreProducer &producer, const Scores &score)
-{
-  m_cachedScores[&producer] = score;
-}
 
 }
 

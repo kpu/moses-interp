@@ -35,6 +35,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include "moses/TypeDef.h"
 #include "moses/Util.h"
 
+// By default, SRILM defines a function called zopen.
+//
+// However, on Mac OS X (and possibly other BSDs),
+// <stdio.h> already defines a zopen function.
+//
+// To resolve this conflict, SRILM checks to see if HAVE_ZOPEN is defined.
+// If it is, SRILM will rename its zopen function as my_zopen.
+//
+// So, before importing any SRILM headers,
+// it is important to define HAVE_ZOPEN if we are on an Apple OS:
+//
+#ifdef __APPLE__
+#define HAVE_ZOPEN
+#endif
+
 #include "FNgramSpecs.h"
 #include "FNgramStats.h"
 #include "FactoredVocab.h"
@@ -69,6 +84,10 @@ private:
   WidMatrix *widMatrix;
 
 public:
+  LanguageModelParallelBackoff(const std::string &line)
+    :LanguageModelMultiFactor(line) {
+  }
+
   ~LanguageModelParallelBackoff();
 
   bool Load(const std::string &filePath, const std::vector<FactorType> &factorTypes, size_t nGramOrder);
@@ -236,13 +255,13 @@ void LanguageModelParallelBackoff::CreateFactors()
   // sentence markers
   for (size_t index = 0 ; index < m_factorTypesOrdered.size() ; ++index) {
     FactorType factorType = m_factorTypesOrdered[index];
-    m_sentenceStartArray[index] 	= factorCollection.AddFactor(Output, factorType, BOS_);
+    m_sentenceStartWord[index] 	= factorCollection.AddFactor(Output, factorType, BOS_);
 
 
-    m_sentenceEndArray[index] 		= factorCollection.AddFactor(Output, factorType, EOS_);
+    m_sentenceEndWord[index] 		= factorCollection.AddFactor(Output, factorType, EOS_);
 
-    factorIdStart = m_sentenceStartArray[index]->GetId();
-    factorIdEnd = m_sentenceEndArray[index]->GetId();
+    factorIdStart = m_sentenceStartWord[index]->GetId();
+    factorIdEnd = m_sentenceEndWord[index]->GetId();
 
     /*for (size_t i = 0; i < 10; i++)
     {
@@ -289,9 +308,9 @@ LMResult LanguageModelParallelBackoff::GetValueForgotState(const std::vector<con
         widMatrix[i][j + 1] = GetLmID(factor, j);
     }
 
-    if (widMatrix[i][1] == GetLmID(m_sentenceStartArray[0], 0) ) {
+    if (widMatrix[i][1] == GetLmID(m_sentenceStartWord[0], 0) ) {
       widMatrix[i][0] = m_wtbid;
-    } else if (widMatrix[i][1] == GetLmID(m_sentenceEndArray[0], 0 )) {
+    } else if (widMatrix[i][1] == GetLmID(m_sentenceEndWord[0], 0 )) {
       widMatrix[i][0] = m_wteid;
     } else {
       widMatrix[i][0] = m_wtid;
@@ -347,9 +366,6 @@ const FFState *LanguageModelParallelBackoff::GetBeginSentenceState() const
 
 }
 
-LanguageModelMultiFactor *NewParallelBackoff() {
-  return new LanguageModelParallelBackoff();
-}
 
 }
 

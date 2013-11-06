@@ -12,13 +12,10 @@
 #endif
 
 #include "moses/TypeDef.h"
-#include "moses/Dictionary.h"
-
-
 #include "moses/PrefixTree.h"
 #include "moses/File.h"
 #include "moses/ObjectPool.h"
-#include "moses/LexicalReorderingTable.h"
+#include "moses/FF/LexicalReordering/LexicalReorderingTable.h"
 #include "moses/LVoc.h"
 #include "moses/TypeDef.h"
 #include "moses/Util.h"
@@ -34,8 +31,7 @@ class PDTimp;
 typedef PrefixTreeF<LabelId,OFF_T> PTF;
 
 //typedef std::pair<std::vector<std::string const*>,Scores > StringTgtCand;
-struct StringTgtCand
-{
+struct StringTgtCand {
   typedef std::vector<std::string const*> Tokens;
   Tokens tokens;
   Scores scores;
@@ -47,15 +43,14 @@ struct StringTgtCand
 /** A phrase table for phrase-based decoding that is held on disk, rather than in memory
  *  Wrapper around a PDTimp class
  */
-class PhraseDictionaryTree : public Dictionary
+class PhraseDictionaryTree
 {
   PDTimp *imp; //implementation
 
-  PhraseDictionaryTree(); // not implemented
   PhraseDictionaryTree(const PhraseDictionaryTree&); //not implemented
   void operator=(const PhraseDictionaryTree&); //not implemented
 public:
-  PhraseDictionaryTree(size_t numScoreComponent);
+  PhraseDictionaryTree();
 
   void NeedAlignmentInfo(bool a);
 
@@ -65,9 +60,6 @@ public:
 
   virtual ~PhraseDictionaryTree();
 
-  DecodeType GetDecodeType() const {
-    return Translate;
-  }
   size_t GetSize() const {
     return 0;
   }
@@ -93,7 +85,7 @@ public:
   // get the target candidates for a given phrase
   void GetTargetCandidates(const std::vector<std::string>& src,
                            std::vector<StringTgtCand>& rv) const;
-                           
+
 
   // get the target candidates for a given phrase
   void GetTargetCandidates(const std::vector<std::string>& src,
@@ -136,10 +128,7 @@ public:
   // print target candidates for a given prefix pointer to a stream, mainly
   // for debugging
   void PrintTargetCandidates(PrefixPtr p,std::ostream& out) const;
-  std::string GetScoreProducerDescription(unsigned) const;
-  std::string GetScoreProducerWeightShortName(unsigned) const {
-    return "tm";
-  }
+
 };
 
 

@@ -233,6 +233,26 @@ inline void TokenizeMultiCharSeparator(std::vector<std::string> &output
   output.push_back(Trim(str.substr(pos, nextPos - pos)));
 }
 
+/** only split of the first delimiter. Used by class FeatureFunction for parse key=value pair.
+ * Value may have = character
+*/
+inline std::vector<std::string> TokenizeFirstOnly(const std::string& str,
+    const std::string& delimiters = " \t")
+{
+  std::vector<std::string> tokens;
+  std::string::size_type pos     = str.find_first_of(delimiters);
+
+  if (std::string::npos != pos) {
+    // Found a token, add it to the vector.
+    tokens.push_back(str.substr(0, pos));
+    tokens.push_back(str.substr(pos + 1, str.size() - pos  - 1));
+  } else {
+    tokens.push_back(str);
+  }
+
+  return tokens;
+}
+
 
 /**
  * Convert vector of type T to string
@@ -310,7 +330,7 @@ inline float CalcTranslationScore(const std::vector<float> &probVector,
 		return out.str();						\
 	}															\
  
-//! delete and remove every element of a collection object such as map, set, list etc
+//! delete and remove every element of a collection object such as set, list etc
 template<class COLL>
 void RemoveAllInColl(COLL &coll)
 {
@@ -319,6 +339,17 @@ void RemoveAllInColl(COLL &coll)
   }
   coll.clear();
 }
+
+//! delete and remove every element of map
+template<class COLL>
+void RemoveAllInMap(COLL &coll)
+{
+  for (typename COLL::const_iterator iter = coll.begin() ; iter != coll.end() ; ++iter) {
+    delete (iter->second);
+  }
+  coll.clear();
+}
+
 
 //! x-platform reference to temp folder
 std::string GetTempFolder();
@@ -344,33 +375,35 @@ double GetUserTime();
 // dump SGML parser for <seg> tags
 std::map<std::string, std::string> ProcessAndStripSGML(std::string &line);
 
+std::string PassthroughSGML(std::string &line, const std::string tagName,const std::string& lbrackStr="<", const std::string& rbrackStr=">");
+
 /**
  * Returns the first string bounded by the delimiters (default delimiters are " " and "\t")i starting from position first_pos
  * and and stores the starting position of the next string (in first_str)
  */
 inline std::string GetFirstString(const std::string& str, int& first_pos,  const std::string& delimiters = " \t")
 {
-	
-	std::string first_str;
-	// Skip delimiters at beginning.
-	std::string::size_type lastPos = str.find_first_not_of(delimiters, first_pos);
-	
-	// Find first "non-delimiter".
-	std::string::size_type pos     = str.find_first_of(delimiters, lastPos);
-	
-	if (std::string::npos != pos || std::string::npos != lastPos){
-		
-		first_str = str.substr(lastPos, pos - lastPos);
-		
-		// Skip delimiters.  Note the "not_of"
-		lastPos = str.find_first_not_of(delimiters, pos);
-		
-	}
-	
-	first_pos = lastPos;
-	return first_str;
+
+  std::string first_str;
+  // Skip delimiters at beginning.
+  std::string::size_type lastPos = str.find_first_not_of(delimiters, first_pos);
+
+  // Find first "non-delimiter".
+  std::string::size_type pos     = str.find_first_of(delimiters, lastPos);
+
+  if (std::string::npos != pos || std::string::npos != lastPos) {
+
+    first_str = str.substr(lastPos, pos - lastPos);
+
+    // Skip delimiters.  Note the "not_of"
+    lastPos = str.find_first_not_of(delimiters, pos);
+
+  }
+
+  first_pos = lastPos;
+  return first_str;
 }
-	
+
 template<class T>
 T log_sum (T log_a, T log_b)
 {
@@ -382,6 +415,7 @@ T log_sum (T log_a, T log_b)
   }
   return ( v );
 }
+
 
 }
 

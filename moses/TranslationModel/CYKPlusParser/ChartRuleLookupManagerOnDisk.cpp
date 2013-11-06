@@ -21,6 +21,7 @@
 
 #include <algorithm>
 
+#include "moses/ChartParser.h"
 #include "moses/TranslationModel/RuleTable/PhraseDictionaryOnDisk.h"
 #include "moses/StaticData.h"
 #include "moses/ChartParserCallback.h"
@@ -33,26 +34,23 @@ namespace Moses
 {
 
 ChartRuleLookupManagerOnDisk::ChartRuleLookupManagerOnDisk(
-  const InputType &sentence,
+  const ChartParser &parser,
   const ChartCellCollectionBase &cellColl,
   const PhraseDictionaryOnDisk &dictionary,
   OnDiskPt::OnDiskWrapper &dbWrapper,
-  const LMList *languageModels,
-  const WordPenaltyProducer *wpProducer,
   const std::vector<FactorType> &inputFactorsVec,
   const std::vector<FactorType> &outputFactorsVec,
   const std::string &filePath)
-  : ChartRuleLookupManagerCYKPlus(sentence, cellColl)
+  : ChartRuleLookupManagerCYKPlus(parser, cellColl)
   , m_dictionary(dictionary)
   , m_dbWrapper(dbWrapper)
-  , m_languageModels(languageModels)
-  , m_wpProducer(wpProducer)
   , m_inputFactorsVec(inputFactorsVec)
   , m_outputFactorsVec(outputFactorsVec)
   , m_filePath(filePath)
 {
   CHECK(m_expandableDottedRuleListVec.size() == 0);
-  size_t sourceSize = sentence.GetSize();
+
+  size_t sourceSize = parser.GetSize();
   m_expandableDottedRuleListVec.resize(sourceSize);
 
   for (size_t ind = 0; ind < m_expandableDottedRuleListVec.size(); ++ind) {
@@ -105,7 +103,7 @@ void ChartRuleLookupManagerOnDisk::GetChartRuleCollection(
 
     // search for terminal symbol
     if (startPos == absEndPos) {
-      OnDiskPt::Word *sourceWordBerkeleyDb = m_dbWrapper.ConvertFromMoses(Input, m_inputFactorsVec, sourceWordLabel.GetLabel());
+      OnDiskPt::Word *sourceWordBerkeleyDb = m_dbWrapper.ConvertFromMoses(m_inputFactorsVec, sourceWordLabel.GetLabel());
 
       if (sourceWordBerkeleyDb != NULL) {
         const OnDiskPt::PhraseNode *node = prevNode.GetChild(*sourceWordBerkeleyDb, m_dbWrapper);
@@ -147,13 +145,13 @@ void ChartRuleLookupManagerOnDisk::GetChartRuleCollection(
     //                                   ,&defaultTargetNonTerm = staticData.GetOutputDefaultNonTerminal();
 
     // go through each SOURCE lhs
-    const NonTerminalSet &sourceLHSSet = GetSentence().GetLabelSet(startPos, endPos);
+    const NonTerminalSet &sourceLHSSet = GetParser().GetInputPath(startPos, endPos).GetNonTerminalSet();
 
     NonTerminalSet::const_iterator iterSourceLHS;
     for (iterSourceLHS = sourceLHSSet.begin(); iterSourceLHS != sourceLHSSet.end(); ++iterSourceLHS) {
       const Word &sourceLHS = *iterSourceLHS;
 
-      OnDiskPt::Word *sourceLHSBerkeleyDb = m_dbWrapper.ConvertFromMoses(Input, m_inputFactorsVec, sourceLHS);
+      OnDiskPt::Word *sourceLHSBerkeleyDb = m_dbWrapper.ConvertFromMoses(m_inputFactorsVec, sourceLHS);
 
       if (sourceLHSBerkeleyDb == NULL) {
         delete sourceLHSBerkeleyDb;
@@ -179,7 +177,7 @@ void ChartRuleLookupManagerOnDisk::GetChartRuleCollection(
 
         if (doSearch) {
 
-          OnDiskPt::Word *chartNonTermBerkeleyDb = m_dbWrapper.ConvertFromMoses(Output, m_outputFactorsVec, cellLabel.GetLabel());
+          OnDiskPt::Word *chartNonTermBerkeleyDb = m_dbWrapper.ConvertFromMoses(m_outputFactorsVec, cellLabel.GetLabel());
 
           if (chartNonTermBerkeleyDb == NULL)
             continue;
@@ -218,12 +216,12 @@ void ChartRuleLookupManagerOnDisk::GetChartRuleCollection(
       const OnDiskPt::PhraseNode &prevNode = prevDottedRule.GetLastNode();
 
       //get node for each source LHS
-      const NonTerminalSet &lhsSet = GetSentence().GetLabelSet(range.GetStartPos(), range.GetEndPos());
+      const NonTerminalSet &lhsSet = GetParser().GetInputPath(range.GetStartPos(), range.GetEndPos()).GetNonTerminalSet();
       NonTerminalSet::const_iterator iterLabelSet;
       for (iterLabelSet = lhsSet.begin(); iterLabelSet != lhsSet.end(); ++iterLabelSet) {
         const Word &sourceLHS = *iterLabelSet;
 
-        OnDiskPt::Word *sourceLHSBerkeleyDb = m_dbWrapper.ConvertFromMoses(Input, m_inputFactorsVec, sourceLHS);
+        OnDiskPt::Word *sourceLHSBerkeleyDb = m_dbWrapper.ConvertFromMoses(m_inputFactorsVec, sourceLHS);
         if (sourceLHSBerkeleyDb == NULL)
           continue;
 
@@ -236,16 +234,14 @@ void ChartRuleLookupManagerOnDisk::GetChartRuleCollection(
 
             const OnDiskPt::TargetPhraseCollection *tpcollBerkeleyDb = node->GetTargetPhraseCollection(m_dictionary.GetTableLimit(), m_dbWrapper);
 
-            std::vector<float> weightT = staticData.GetWeights(m_dictionary.GetFeature());
+            std::vector<float> weightT = staticData.GetWeights(&m_dictionary);
             targetPhraseCollection
             = tpcollBerkeleyDb->ConvertToMoses(m_inputFactorsVec
                                                ,m_outputFactorsVec
                                                ,m_dictionary
                                                ,weightT
-                                               ,m_wpProducer
-                                               ,*m_languageModels
-                                               ,m_filePath
-                                               , m_dbWrapper.GetVocab());
+                                               ,m_dbWrapper.GetVocab()
+                                               ,true);
 
             delete tpcollBerkeleyDb;
             m_cache[tpCollFilePos] = targetPhraseCollection;

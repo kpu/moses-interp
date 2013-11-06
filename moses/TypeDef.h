@@ -106,25 +106,6 @@ enum DistortionOrientationOptions {
 };
 }
 
-enum LMType {
-  SingleFactor
-  ,MultiFactor
-};
-enum LMImplementation {
-  SRI			= 0
-  ,IRST		= 1
-//  ,Skip		= 2
-  ,Joint		= 3
-//  ,Internal	= 4
-  ,RandLM 	= 5
-  ,Remote 	= 6
-  ,ParallelBackoff	= 7
-  ,Ken			= 8
-  ,LazyKen	= 9
-  ,ORLM = 10
-  ,LDHTLM = 11
-};
-
 enum PhraseTableImplementation {
   Memory				= 0
   ,Binary				= 1
@@ -139,6 +120,9 @@ enum PhraseTableImplementation {
   ,ALSuffixArray = 10
   ,FuzzyMatch    = 11
   ,Compact      = 12
+  ,Interpolated = 13
+  ,DSuffixArray = 14
+  ,MemMappedSA = 15
 };
 
 enum InputTypeEnum {
@@ -147,14 +131,15 @@ enum InputTypeEnum {
   ,WordLatticeInput				= 2
   ,TreeInputType					= 3
   ,WordLatticeInput2			= 4
-  
+
 };
 
 enum XmlInputType {
-  XmlPassThrough	= 0,
-  XmlIgnore				= 1,
-  XmlExclusive		= 2,
-  XmlInclusive		= 3
+  XmlPassThrough = 0,
+  XmlIgnore      = 1,
+  XmlExclusive   = 2,
+  XmlInclusive   = 3,
+  XmlConstraint	 = 4
 };
 
 enum DictionaryFind {
@@ -187,8 +172,7 @@ enum WordAlignmentSort {
   ,TargetOrder = 1
 };
 
-enum FormatType
-{
+enum FormatType {
   MosesFormat
   ,HieroFormat
 };

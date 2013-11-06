@@ -38,14 +38,22 @@ public:
   virtual void setReferenceFiles(const std::vector<std::string>& referenceFiles);
   virtual void prepareStats(std::size_t sid, const std::string& text, ScoreStats& entry);
   virtual statscore_t calculateScore(const std::vector<int>& comps) const;
-  virtual std::size_t NumberOfScores() const { return 2 * kBleuNgramOrder + 1; }
+  virtual std::size_t NumberOfScores() const {
+    return 2 * kBleuNgramOrder + 1;
+  }
 
   int CalcReferenceLength(std::size_t sentence_id, std::size_t length);
 
-  ReferenceLengthType GetReferenceLengthType() const { return m_ref_length_type; }
-  void SetReferenceLengthType(ReferenceLengthType type) { m_ref_length_type = type; }
+  ReferenceLengthType GetReferenceLengthType() const {
+    return m_ref_length_type;
+  }
+  void SetReferenceLengthType(ReferenceLengthType type) {
+    m_ref_length_type = type;
+  }
 
-  const std::vector<Reference*>& GetReferences() const { return m_references.get(); }
+  const std::vector<Reference*>& GetReferences() const {
+    return m_references.get();
+  }
 
   /**
    * Count the ngrams of each type, up to the given length in the input line.
@@ -57,13 +65,17 @@ public:
   bool OpenReference(const char* filename, std::size_t file_id);
 
   // NOTE: this function is used for unit testing.
-  bool OpenReferenceStream(std::istream* is, std::size_t file_id);
+  virtual bool OpenReferenceStream(std::istream* is, std::size_t file_id);
 
-private:
+  //private:
+protected:
   ReferenceLengthType m_ref_length_type;
 
   // reference translations.
   ScopedVector<Reference> m_references;
+
+  // constructor used by subclasses
+  BleuScorer(const std::string& name, const std::string& config): StatisticsBasedScorer(name,config) {}
 
   // no copying allowed
   BleuScorer(const BleuScorer&);
@@ -74,7 +86,7 @@ private:
  * This function is used in PRO.
  */
 float smoothedSentenceBleu
-  (const std::vector<float>& stats, float smoothing=1.0, bool smoothBP=false);
+(const std::vector<float>& stats, float smoothing=1.0, bool smoothBP=false);
 
 /** Computes sentence-level BLEU score given a background corpus.
  * This function is used in batch MIRA.

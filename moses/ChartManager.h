@@ -28,7 +28,6 @@
 #include "InputType.h"
 #include "WordsRange.h"
 #include "SentenceStats.h"
-#include "TranslationSystem.h"
 #include "ChartTranslationOptionList.h"
 #include "ChartParser.h"
 
@@ -58,7 +57,6 @@ private:
   InputType const& m_source; /**< source sentence to be translated */
   ChartCellCollection m_hypoStackColl;
   std::auto_ptr<SentenceStats> m_sentenceStats;
-  const TranslationSystem* m_system;
   clock_t m_start; /**< starting time, used for logging */
   unsigned m_hypothesisId; /* For handing out hypothesis ids to ChartHypothesis */
 
@@ -66,14 +64,8 @@ private:
 
   ChartTranslationOptionList m_translationOptionList; /**< pre-computed list of translation options for the phrases in this sentence */
 
-  //! Some features should be calculated prior to search
-  boost::unordered_map<TargetPhrase,ScoreComponentCollection, TargetPhraseHasher, TargetPhraseComparator> m_precalculatedScores;
-
-  //! Pre-calculate most stateless feature values
-  void PreCalculateScores();
-
 public:
-  ChartManager(InputType const& source, const TranslationSystem* system);
+  ChartManager(InputType const& source);
   ~ChartManager();
   void ProcessSentence();
   void AddXmlChartOptions();
@@ -81,41 +73,38 @@ public:
   void CalcNBest(size_t count, ChartTrellisPathList &ret, bool onlyDistinct=0) const;
 
   void GetSearchGraph(long translationId, std::ostream &outputSearchGraphStream) const;
-	void FindReachableHypotheses( const ChartHypothesis *hypo, std::map<unsigned,bool> &reachable ) const; /* auxilliary function for GetSearchGraph */
+  void FindReachableHypotheses( const ChartHypothesis *hypo, std::map<unsigned,bool> &reachable ) const; /* auxilliary function for GetSearchGraph */
 
   //! the input sentence being decoded
   const InputType& GetSource() const {
     return m_source;
-  }
-  
-  //! which particular set of models is in use
-  const TranslationSystem* GetTranslationSystem() const {
-    return m_system;
   }
 
   //! debug data collected when decoding sentence
   SentenceStats& GetSentenceStats() const {
     return *m_sentenceStats;
   }
-  
+
+  //DIMw
+  const ChartCellCollection& GetChartCellCollection() const {
+    return m_hypoStackColl;
+  }
+
   /***
    * to be called after processing a sentence (which may consist of more than just calling ProcessSentence() )
    * currently an empty function
    */
-  void CalcDecoderStatistics() const
-  { }
-  
+  void CalcDecoderStatistics() const {
+  }
+
   void ResetSentenceStats(const InputType& source) {
     m_sentenceStats = std::auto_ptr<SentenceStats>(new SentenceStats(source));
   }
 
   //! contigious hypo id for each input sentence. For debugging purposes
-  unsigned GetNextHypoId() { return m_hypothesisId++; }
-
-  //! Access the pre-calculated values
-  void InsertPreCalculatedScores(const TargetPhrase& targetPhrase,
-      ScoreComponentCollection* scoreBreakdown) const;
-
+  unsigned GetNextHypoId() {
+    return m_hypothesisId++;
+  }
 };
 
 }

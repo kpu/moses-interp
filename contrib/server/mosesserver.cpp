@@ -10,10 +10,13 @@
 #include "moses/Manager.h"
 #include "moses/StaticData.h"
 #include "moses/TranslationModel/PhraseDictionaryDynSuffixArray.h"
-#include "moses/TranslationSystem.h"
+#include "moses/TranslationModel/PhraseDictionaryMultiModelCounts.h"
 #include "moses/TreeInput.h"
-#include "moses/LMList.h"
 #include "moses/LM/ORLM.h"
+
+#ifdef WITH_THREADS
+#include <boost/thread.hpp>
+#endif
 
 #include <xmlrpc-c/base.hpp>
 #include <xmlrpc-c/registry.hpp>
@@ -23,18 +26,6 @@ using namespace Moses;
 using namespace std;
 
 typedef std::map<std::string, xmlrpc_c::value> params_t;
-
-/** Find out which translation system to use */
-const TranslationSystem& getTranslationSystem(params_t params)
-{
-  string system_id = TranslationSystem::DEFAULT;
-  params_t::const_iterator pi = params.find("system");
-  if (pi != params.end()) {
-    system_id = xmlrpc_c::value_string(pi->second);
-  }
-  VERBOSE(1, "Using translation system " << system_id << endl;)
-  return StaticData::Instance().GetTranslationSystem(system_id);
-}
 
 class Updater: public xmlrpc_c::method
 {
@@ -51,13 +42,12 @@ public:
           xmlrpc_c::value *   const  retvalP) {
     const params_t params = paramList.getStruct(0);
     breakOutParams(params);
-    const TranslationSystem& system = getTranslationSystem(params);
-    const PhraseDictionaryFeature* pdf = system.GetPhraseDictionaries()[0];
-    PhraseDictionaryDynSuffixArray* pdsa = (PhraseDictionaryDynSuffixArray*) pdf->GetDictionary();
+    const PhraseDictionary* pdf = StaticData::Instance().GetPhraseDictionaries()[0];
+    PhraseDictionaryDynSuffixArray* pdsa = (PhraseDictionaryDynSuffixArray*) pdf;
     cerr << "Inserting into address " << pdsa << endl;
     pdsa->insertSnt(source_, target_, alignment_);
     if(add2ORLM_) {
-      updateORLM();
+      //updateORLM();
     }
     cerr << "Done inserting\n";
     //PhraseDictionary* pdsa = (PhraseDictionary*) pdf->GetDictionary(*dummy);
@@ -69,21 +59,23 @@ public:
   }
   string source_, target_, alignment_;
   bool bounded_, add2ORLM_;
+  /*
   void updateORLM() {
     // TODO(level101): this belongs in the language model, not in moseserver.cpp
     vector<string> vl;
     map<vector<string>, int> ngSet;
     LMList lms = StaticData::Instance().GetLMList(); // get LM
     LMList::const_iterator lmIter = lms.begin();
-    LanguageModelORLM* orlm = static_cast<LanguageModelORLM*>(static_cast<LMRefCount*>(*lmIter)->MosesServerCppShouldNotHaveLMCode());
+    LanguageModel *lm = *lmIter;
+    LanguageModelORLM* orlm = static_cast<LanguageModelORLM*>(lm);
     if(orlm == 0) {
       cerr << "WARNING: Unable to add target sentence to ORLM\n";
       return;
     }
     // break out new ngrams from sentence
     const int ngOrder(orlm->GetNGramOrder());
-    const std::string sBOS = orlm->GetSentenceStart()->GetString();
-    const std::string sEOS = orlm->GetSentenceEnd()->GetString();
+    const std::string sBOS = orlm->GetSentenceStart()->GetString().as_string();
+    const std::string sEOS = orlm->GetSentenceEnd()->GetString().as_string();
     Utils::splitToStr(target_, vl, " ");
     // insert BOS and EOS
     vl.insert(vl.begin(), sBOS);
@@ -109,6 +101,8 @@ public:
       }
     }
   }
+  */
+  
   void breakOutParams(const params_t& params) {
     params_t::const_iterator si = params.find("source");
     if(si == params.end())
@@ -131,6 +125,67 @@ public:
     add2ORLM_ = (si != params.end());
   }
 };
+
+class Optimizer : public xmlrpc_c::method
+{
+public:
+  Optimizer() {
+    // signature and help strings are documentation -- the client
+    // can query this information with a system.methodSignature and
+    // system.methodHelp RPC.
+    this->_signature = "S:S";
+    this->_help = "Optimizes multi-model translation model";
+  }
+
+  void
+  execute(xmlrpc_c::paramList const& paramList,
+          xmlrpc_c::value *   const  retvalP) {
+#ifdef WITH_DLIB
+    const params_t params = paramList.getStruct(0);
+    params_t::const_iterator si = params.find("model_name");
+    if (si == params.end()) {
+      throw xmlrpc_c::fault(
+        "Missing name of model to be optimized (e.g. PhraseDictionaryMultiModelCounts0)",
+        xmlrpc_c::fault::CODE_PARSE);
+    }
+    const string model_name = xmlrpc_c::value_string(si->second);
+    PhraseDictionaryMultiModel* pdmm = (PhraseDictionaryMultiModel*) FindPhraseDictionary(model_name);
+
+    si = params.find("phrase_pairs");
+    if (si == params.end()) {
+      throw xmlrpc_c::fault(
+        "Missing list of phrase pairs",
+        xmlrpc_c::fault::CODE_PARSE);
+    }
+
+    vector<pair<string, string> > phrase_pairs;
+
+    xmlrpc_c::value_array phrase_pairs_array = xmlrpc_c::value_array(si->second);
+    vector<xmlrpc_c::value> phrasePairValueVector(phrase_pairs_array.vectorValueValue());
+    for (size_t i=0;i < phrasePairValueVector.size();i++) {
+        xmlrpc_c::value_array phrasePairArray = xmlrpc_c::value_array(phrasePairValueVector[i]);
+        vector<xmlrpc_c::value> phrasePair(phrasePairArray.vectorValueValue());
+        string L1 = xmlrpc_c::value_string(phrasePair[0]);
+        string L2 = xmlrpc_c::value_string(phrasePair[1]);
+        phrase_pairs.push_back(make_pair(L1,L2));
+    }
+
+    vector<float> weight_vector;
+    weight_vector = pdmm->MinimizePerplexity(phrase_pairs);
+
+    vector<xmlrpc_c::value> weight_vector_ret;
+    for (size_t i=0;i < weight_vector.size();i++) {
+        weight_vector_ret.push_back(xmlrpc_c::value_double(weight_vector[i]));
+    }
+    *retvalP = xmlrpc_c::value_array(weight_vector_ret);
+#else
+    string errmsg = "Error: Perplexity minimization requires dlib (compilation option --with-dlib)";
+    cerr << errmsg << endl;
+    *retvalP = xmlrpc_c::value_string(errmsg);
+#endif
+  }
+};
+
 
 class Translator : public xmlrpc_c::method
 {
@@ -167,6 +222,20 @@ public:
     bool addTopts = (si != params.end());
     si = params.find("report-all-factors");
     bool reportAllFactors = (si != params.end());
+    si = params.find("nbest");
+    int nbest_size = (si == params.end()) ? 0 : int(xmlrpc_c::value_int(si->second));
+    si = params.find("nbest-distinct");
+    bool nbest_distinct = (si != params.end());
+
+    vector<float> multiModelWeights;
+    si = params.find("lambda");
+    if (si != params.end()) {
+        xmlrpc_c::value_array multiModelArray = xmlrpc_c::value_array(si->second);
+        vector<xmlrpc_c::value> multiModelValueVector(multiModelArray.vectorValueValue());
+        for (size_t i=0;i < multiModelValueVector.size();i++) {
+            multiModelWeights.push_back(xmlrpc_c::value_double(multiModelValueVector[i]));
+        }
+    }
 
     const StaticData &staticData = StaticData::Instance();
 
@@ -174,7 +243,11 @@ public:
       (const_cast<StaticData&>(staticData)).SetOutputSearchGraph(true);
     }
 
-    const TranslationSystem& system = getTranslationSystem(params);
+    if (multiModelWeights.size() > 0) {
+      PhraseDictionaryMultiModel* pdmm = (PhraseDictionaryMultiModel*) staticData.GetPhraseDictionaries()[0]; //TODO: only works if multimodel is first phrase table
+      pdmm->SetTemporaryMultiModelWeightsVector(multiModelWeights);
+    }
+
     stringstream out, graphInfo, transCollOpts;
     map<string, xmlrpc_c::value> retData;
 
@@ -184,7 +257,7 @@ public:
           staticData.GetInputFactorOrder();
         stringstream in(source + "\n");
         tinput.Read(in,inputFactorOrder);
-        ChartManager manager(tinput, &system);
+        ChartManager manager(tinput);
         manager.ProcessSentence();
         const ChartHypothesis *hypo = manager.GetBestHypothesis();
         outputChartHypo(out,hypo);
@@ -195,7 +268,7 @@ public:
         stringstream in(source + "\n");
         sentence.Read(in,inputFactorOrder);
 	size_t lineNumber = 0; // TODO: Include sentence request number here?
-        Manager manager(lineNumber, sentence, staticData.GetSearchAlgorithm(), &system);
+        Manager manager(lineNumber, sentence, staticData.GetSearchAlgorithm());
         manager.ProcessSentence();
         const Hypothesis* hypo = manager.GetBestHypothesis();
 
@@ -211,6 +284,9 @@ public:
         }
         if (addTopts) {
           insertTranslationOptions(manager,retData);
+        }
+        if (nbest_size>0) {
+          outputNBest(manager, retData, nbest_size, nbest_distinct, reportAllFactors, addAlignInfo);
         }
     }
     pair<string, xmlrpc_c::value>
@@ -249,7 +325,7 @@ public:
 
   void outputChartHypo(ostream& out, const ChartHypothesis* hypo) {
     Phrase outPhrase(20);
-    hypo->CreateOutputPhrase(outPhrase);
+    hypo->GetOutputPhrase(outPhrase);
 
     // delete 1st & last
     assert(outPhrase.GetSize() >= 2);
@@ -261,7 +337,6 @@ public:
     }
 
   }
-
 
   bool compareSearchGraphNode(const SearchGraphNode& a, const SearchGraphNode b) {
     return a.hypo->GetId() < b.hypo->GetId();
@@ -297,11 +372,63 @@ public:
     retData.insert(pair<string, xmlrpc_c::value>("sg", xmlrpc_c::value_array(searchGraphXml)));
   }
 
+  void outputNBest(const Manager& manager,
+                   map<string, xmlrpc_c::value>& retData,
+                   const int n=100,
+                   const bool distinct=false,
+                   const bool reportAllFactors=false,
+                   const bool addAlignmentInfo=false)
+  {
+    TrellisPathList nBestList;
+    manager.CalcNBest(n, nBestList, distinct);
+
+    vector<xmlrpc_c::value> nBestXml;
+    TrellisPathList::const_iterator iter;
+    for (iter = nBestList.begin() ; iter != nBestList.end() ; ++iter) {
+      const TrellisPath &path = **iter;
+      const std::vector<const Hypothesis *> &edges = path.GetEdges();
+      map<string, xmlrpc_c::value> nBestXMLItem;
+
+      // output surface
+      ostringstream out;
+      vector<xmlrpc_c::value> alignInfo;
+      for (int currEdge = (int)edges.size() - 1 ; currEdge >= 0 ; currEdge--) {
+        const Hypothesis &edge = *edges[currEdge];
+        const Phrase& phrase = edge.GetCurrTargetPhrase();
+        if(reportAllFactors) {
+          out << phrase << " ";
+        } else {
+          for (size_t pos = 0 ; pos < phrase.GetSize() ; pos++) {
+            const Factor *factor = phrase.GetFactor(pos, 0);
+            out << *factor << " ";
+          }
+        }
+
+        if (addAlignmentInfo && currEdge != (int)edges.size() - 1) {
+          map<string, xmlrpc_c::value> phraseAlignInfo;
+          phraseAlignInfo["tgt-start"] = xmlrpc_c::value_int(edge.GetCurrTargetWordsRange().GetStartPos());
+          phraseAlignInfo["src-start"] = xmlrpc_c::value_int(edge.GetCurrSourceWordsRange().GetStartPos());
+          phraseAlignInfo["src-end"] = xmlrpc_c::value_int(edge.GetCurrSourceWordsRange().GetEndPos());
+          alignInfo.push_back(xmlrpc_c::value_struct(phraseAlignInfo));
+        }
+      }
+      nBestXMLItem["hyp"] = xmlrpc_c::value_string(out.str());
+
+      if (addAlignmentInfo)
+        nBestXMLItem["align"] = xmlrpc_c::value_array(alignInfo);
+
+      // weighted score
+      nBestXMLItem["totalScore"] = xmlrpc_c::value_double(path.GetTotalScore());
+      nBestXml.push_back(xmlrpc_c::value_struct(nBestXMLItem));
+    }
+    retData.insert(pair<string, xmlrpc_c::value>("nbest", xmlrpc_c::value_array(nBestXml)));
+  }
+
   void insertTranslationOptions(Manager& manager, map<string, xmlrpc_c::value>& retData) {
     const TranslationOptionCollection* toptsColl = manager.getSntTranslationOptions();
     vector<xmlrpc_c::value> toptsXml;
-    for (size_t startPos = 0 ; startPos < toptsColl->GetSize() ; ++startPos) {
-      size_t maxSize = toptsColl->GetSize() - startPos;
+    for (size_t startPos = 0 ; startPos < toptsColl->GetSource().GetSize() ; ++startPos) {
+      size_t maxSize = toptsColl->GetSource().GetSize() - startPos;
       size_t maxSizePhrase = StaticData::Instance().GetMaxPhraseLength();
       maxSize = std::min(maxSize, maxSizePhrase);
 
@@ -380,13 +507,18 @@ int main(int argc, char** argv)
     exit(1);
   }
 
+  //512 MB data limit (512KB is not enough for optimization)
+  xmlrpc_limit_set(XMLRPC_XML_SIZE_LIMIT_ID, 512*1024*1024);
+
   xmlrpc_c::registry myRegistry;
 
   xmlrpc_c::methodPtr const translator(new Translator);
   xmlrpc_c::methodPtr const updater(new Updater);
+  xmlrpc_c::methodPtr const optimizer(new Optimizer);
 
   myRegistry.addMethod("translate", translator);
   myRegistry.addMethod("updater", updater);
+  myRegistry.addMethod("optimize", optimizer);
 
   xmlrpc_c::serverAbyss myAbyssServer(
     myRegistry,

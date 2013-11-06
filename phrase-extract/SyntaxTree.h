@@ -44,8 +44,8 @@ public:
     ,m_end(endPos)
     ,m_label(label)
     ,m_parent(0)
-    ,m_pcfgScore(0.0f)
-  {}
+    ,m_pcfgScore(0.0f) {
+  }
   int GetStart() const {
     return m_start;
   }
@@ -90,6 +90,7 @@ protected:
   typedef std::map< int, SyntaxTreeIndex2 > SyntaxTreeIndex;
   typedef SyntaxTreeIndex::const_iterator SyntaxTreeIndexIterator;
   SyntaxTreeIndex m_index;
+  int m_size;
   std::vector< SyntaxNode* > m_emptyNode;
 
   friend std::ostream& operator<<(std::ostream&, const SyntaxTree&);
@@ -113,7 +114,7 @@ public:
     return m_nodes;
   };
   size_t GetNumWords() const {
-    return m_index.size();
+    return m_size;
   }
   void ConnectNodes();
   void Clear();

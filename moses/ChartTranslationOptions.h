@@ -26,16 +26,23 @@
 
 #include "util/check.hh"
 #include <vector>
+#include <boost/shared_ptr.hpp>
+#include "ChartTranslationOption.h"
 
 namespace Moses
 {
+class ChartTranslationOption;
+class InputPath;
+class InputType;
 
 /** Similar to a DottedRule, but contains a direct reference to a list
  * of translations and provdes an estimate of the best score. For a specific range in the input sentence
  */
 class ChartTranslationOptions
 {
- public:
+public:
+  typedef std::vector<boost::shared_ptr<ChartTranslationOption> > CollType;
+
   /** Constructor
       \param targetPhraseColl @todo dunno
       \param stackVec @todo dunno
@@ -43,26 +50,22 @@ class ChartTranslationOptions
       \param score @todo dunno
    */
   ChartTranslationOptions(const TargetPhraseCollection &targetPhraseColl,
-                         const StackVec &stackVec,
-                         const WordsRange &wordsRange,
-                         float score)
-      : m_stackVec(stackVec)
-      , m_targetPhraseCollection(&targetPhraseColl)
-      , m_wordsRange(&wordsRange)
-      , m_estimateOfBestScore(score) 
-  {}
-
-  ~ChartTranslationOptions() {}
+                          const StackVec &stackVec,
+                          const WordsRange &wordsRange,
+                          float score);
+  ~ChartTranslationOptions();
 
   static float CalcEstimateOfBestScore(const TargetPhraseCollection &,
                                        const StackVec &);
 
   //! @todo dunno
-  const StackVec &GetStackVec() const { return m_stackVec; }
+  const StackVec &GetStackVec() const {
+    return m_stackVec;
+  }
 
   //! @todo isn't the translation suppose to just contain 1 target phrase, not a whole collection of them?
-  const TargetPhraseCollection &GetTargetPhraseCollection() const { 
-    return *m_targetPhraseCollection;
+  const CollType &GetTargetPhrases() const {
+    return m_collection;
   }
 
   //! the range in the source sentence this translation option covers
@@ -74,12 +77,21 @@ class ChartTranslationOptions
     * the estimate is the sum of the top target phrase's estimated score plus the
     * scores of the best child hypotheses.
     */
-  inline float GetEstimateOfBestScore() const { return m_estimateOfBestScore; }
+  inline float GetEstimateOfBestScore() const {
+    return m_estimateOfBestScore;
+  }
 
- private:
+  void Evaluate(const InputType &input, const InputPath &inputPath);
+
+  void SetInputPath(const InputPath *inputPath);
+
+  void CreateSourceRuleFromInputPath();
+
+private:
 
   StackVec m_stackVec; //! vector of hypothesis list!
-  const TargetPhraseCollection *m_targetPhraseCollection;
+  CollType m_collection;
+
   const WordsRange *m_wordsRange;
   float m_estimateOfBestScore;
 };

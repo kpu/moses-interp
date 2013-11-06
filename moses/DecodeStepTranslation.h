@@ -24,42 +24,61 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "DecodeStep.h"
 #include "moses/TranslationModel/PhraseDictionary.h"
+#include "InputPath.h"
 
 namespace Moses
 {
 
-class PhraseDictionaryFeature;
+class PhraseDictionary;
 class TargetPhrase;
+class InputPath;
 
 //! subclass of DecodeStep for translation step
 class DecodeStepTranslation : public DecodeStep
 {
 public:
   DecodeStepTranslation(); //! not implemented
-  DecodeStepTranslation(const PhraseDictionaryFeature* phraseFeature, const DecodeStep* prev);
+  DecodeStepTranslation(const PhraseDictionary* phraseFeature,
+                        const DecodeStep* prev,
+                        const std::vector<FeatureFunction*> &features);
 
 
-  virtual void Process(const TranslationSystem* system
-                       , const TranslationOption &inputPartialTranslOpt
+  virtual void Process(const TranslationOption &inputPartialTranslOpt
                        , const DecodeStep &decodeStep
                        , PartialTranslOptColl &outputPartialTranslOptColl
                        , TranslationOptionCollection *toc
-                       , bool adhereTableLimit) const;
+                       , bool adhereTableLimit
+                       , const TargetPhraseCollection *phraseColl) const;
 
 
   /*! initialize list of partial translation options by applying the first translation step
   * Ideally, this function should be in DecodeStepTranslation class
   */
-  void ProcessInitialTranslation(const TranslationSystem* system
-                                 , const InputType &source
+  void ProcessInitialTranslation(const InputType &source
                                  , PartialTranslOptColl &outputPartialTranslOptColl
-                                 , size_t startPos, size_t endPos, bool adhereTableLimit) const;
+                                 , size_t startPos, size_t endPos, bool adhereTableLimit
+                                 , const InputPath &inputPath
+                                 , const TargetPhraseCollection *phraseColl) const;
+
+  // legacy
+  void ProcessInitialTranslationLEGACY(const InputType &source
+                                       , PartialTranslOptColl &outputPartialTranslOptColl
+                                       , size_t startPos, size_t endPos, bool adhereTableLimit
+                                       , const InputPathList &inputPathList) const;
+  void ProcessLEGACY(const TranslationOption &inputPartialTranslOpt
+                     , const DecodeStep &decodeStep
+                     , PartialTranslOptColl &outputPartialTranslOptColl
+                     , TranslationOptionCollection *toc
+                     , bool adhereTableLimit) const;
 
 private:
-  /*! create new TranslationOption from merging oldTO with mergePhrase
-  	This function runs IsCompatible() to ensure the two can be merged
-  */
-  TranslationOption *MergeTranslation(const TranslationOption& oldTO, const TargetPhrase &targetPhrase) const;
+  // I'm not sure whether this actually works or not for binary phrase table.
+  // The source phrase only appears to contain the 1st word, therefore, this function
+  // only compares the 1st word
+  const InputPath &GetInputPathLEGACY(const TargetPhrase targetPhrase,
+                                      const Phrase sourcePhrase,
+                                      const InputPathList &inputPathList) const;
+
 };
 
 

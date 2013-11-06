@@ -940,6 +940,9 @@ sub define_step {
         elsif ($DO_STEP[$i] eq 'TRAINING:prepare-data') {
             &define_training_prepare_data($i);
         }
+        elsif ($DO_STEP[$i] eq 'TRAINING:prepare-data-fast-align') {
+            &define_training_prepare_data_fast_align($i);
+        }
         elsif ($DO_STEP[$i] eq 'TRAINING:run-giza') {
             &define_training_run_giza($i);
         }
@@ -1611,7 +1614,8 @@ sub define_tuning_tune {
     my $word_alignment = &backoff_and_get("TRAINING:include-word-alignment-in-rules");
     
     # the last 3 variables are only used for mira tuning 
-    my ($tuned_config,$config,$input,$reference,$config_devtest,$input_devtest,$reference_devtest) = &get_output_and_input($step_id); 
+    my ($tuned_config,$config,$input,$reference,$config_devtest,$input_devtest,$reference_devtest, $filtered_config) = &get_output_and_input($step_id); 
+    $config = $filtered_config if $filtered_config;
 
     my $cmd = "";
     if ($use_mira) {
@@ -1694,14 +1698,8 @@ sub write_mira_config {
     my $tuning_decoder_settings = &check_and_get("TUNING:decoder-settings");
     my $start_weights = &backoff_and_get("TUNING:start-weight-config");
     my $tuning_settings = &check_and_get("TUNING:tuning-settings");
-    my $jobs = 10; # this overwrites the default in training-expt.perl
-    if ($tuning_settings =~ /^(.*)--jobs (\d+)(.*)$/) {
-	$jobs = $2;
-	$tuning_settings = $1.$3;
-	$tuning_settings =~ s/ +/ /;
-	$tuning_settings =~ s/^ //;
-	$tuning_settings =~ s/ $//;
-    }
+
+    my $parallel_settings = &backoff_and_get("TUNING:parallel-settings");
     my $use_jackknife = &backoff_and_get("TUNING:use-jackknife");
 
     # are we tuning a meta feature?
@@ -1790,7 +1788,11 @@ sub write_mira_config {
     }
     print CFG "decoder-settings=".$tuning_decoder_settings." -text-type \"dev\"\n";    
     print CFG "hours=48 \n"; 
-    print CFG "jobs=$jobs \n";
+    if ($parallel_settings) {
+	    foreach my $setting (split(" ", $parallel_settings)) {
+	      print  CFG $setting."\n";
+	    }
+    }
     print CFG "extra-args=".$tuning_settings."\n\n";   
     print CFG "[devtest] \n";
     if (&get("TRAINING:hierarchical-rule-set")) {
@@ -1840,6 +1842,25 @@ sub write_selectBestMiraWeights {
     
     close(SCR);
     system("chmod u+x $script_filename");
+}
+
+sub define_training_prepare_data_fast_align {
+    my ($step_id) = @_;
+
+    my ($prepared, $corpus) = &get_output_and_input($step_id);
+    my $scripts = &check_and_get("GENERAL:moses-script-dir");
+    my $input_extension  = &check_backoff_and_get("TRAINING:input-extension");
+    my $output_extension = &check_backoff_and_get("TRAINING:output-extension");
+
+    my $alignment_factors = "";
+    if (&backoff_and_get("TRAINING:input-factors")) {
+      my %IN = &get_factor_id("input");
+      my %OUT = &get_factor_id("output");
+      $alignment_factors = &encode_factor_definition("alignment-factors",\%IN,\%OUT);
+    }
+    my $cmd = "$scripts/ems/support/prepare-fast-align.perl $corpus.$input_extension $corpus.$output_extension $alignment_factors > $prepared";
+
+    &create_step($step_id,$cmd);
 }
 
 sub define_training_prepare_data {
@@ -1999,13 +2020,14 @@ sub define_training_build_ttable {
 sub define_domain_feature_score_option {
     my ($domains) = @_;
     my $spec = &backoff_and_get("TRAINING:domain-features");
-    my $method;
+    my ($method,$restricted_to_table) = ("","");
     $method = "Indicator" if $spec =~ /indicator/;
     $method = "Ratio" if $spec =~ /ratio/;
     $method = "Subset" if $spec =~ /subset/;
+    $restricted_to_table = $1 if $spec =~ /( table \S+)/;
     die("ERROR: faulty TRAINING:domain-features spec (no method): $spec\n") unless defined($method);
     if ($spec =~ /sparse/) {
-      return "-sparse-translation-table -score-options '--SparseDomain$method $domains' -additional-ini '<br>[report-sparse-features]<br>stm<br><br>' ";
+      return "-score-options '--SparseDomain$method $domains$restricted_to_table' ";
     }
     else {
       return "-score-options '--Domain$method $domains' ";
@@ -2076,32 +2098,28 @@ sub define_training_sigtest_filter {
     &create_step($step_id,$cmd);
 }
 
-sub define_training_create_config {
-    my ($step_id) = @_;
+sub get_config_tables {
+    my ($config,$reordering_table,$phrase_translation_table,$generation_table,$domains) = @_;
 
-    my ($config,$reordering_table,$phrase_translation_table,$generation_table,$sparse_lexical_features,$domains,@LM)
-			= &get_output_and_input($step_id);
-
+    my $moses_src_dir = &check_and_get("GENERAL:moses-src-dir");
     my $cmd = &get_training_setting(9);
 
-		# get model, and whether suffix array is used. Determines the pt implementation.
+    # get model, and whether suffix array is used. Determines the pt implementation.
     my $hierarchical = &get("TRAINING:hierarchical-rule-set");
+    $cmd .= "-hierarchical " if $hierarchical;
+
     my $sa_exec_dir = &get("TRAINING:suffix-array");
-		
-		my ($ptImpl, $numFF);
-		if ($hierarchical) {
-		  if ($sa_exec_dir) {
-				$ptImpl = 10;  # suffix array
-				$numFF = 7;
-			}
-			else {
-				$ptImpl = 6; # in-mem SCFG
-			}
-		}
-		else {
-			$ptImpl = 0; # phrase-based
-		}
-		
+    my ($ptImpl, $numFF) = (0);
+    if ($hierarchical) {
+      if ($sa_exec_dir) {
+        $ptImpl = 10;  # suffix array
+        $numFF = 7;
+      }
+      else {
+        $ptImpl = 6; # in-mem SCFG
+      }
+    }
+
     # additional settings for factored models
     my $ptCmd = $phrase_translation_table;
     $ptCmd .= ":$ptImpl" if $ptImpl>0;
@@ -2132,8 +2150,44 @@ sub define_training_create_config {
 	my $unknown_word_label = &versionize(&long_file_name("unknown-word-label","model",""),$extract_version);
 	$cmd .= "-unknown-word-label $unknown_word_label ";
     }
+    # configuration due to domain features
+    $cmd .= &define_domain_feature_score_option($domains) if &get("TRAINING:domain-features");
+    # additional specified items from config
+    my $additional_ini = &get("TRAINING:additional-ini");
+    $cmd .= "-additional-ini '$additional_ini' " if defined($additional_ini);
 
-    # find out which language model files have been built
+    return $cmd;
+}
+
+sub define_training_create_config {
+    my ($step_id) = @_;
+
+    my ($config,$reordering_table,$phrase_translation_table,$generation_table,$sparse_lexical_features,$domains,$osm, @LM)
+			= &get_output_and_input($step_id);
+
+    my $cmd = &get_config_tables($config,$reordering_table,$phrase_translation_table,$generation_table,$domains);
+
+    if($osm){
+      
+      my $osm_settings = &get("TRAINING:operation-sequence-model-settings"); 
+     
+
+	if($osm_settings =~ /factor/){
+	
+		$cmd .= "-osm-model $osm/ ";
+		my $find = "--factor";
+		my $replace = "-osm-setting";
+		$osm_settings =~ s/$find/$replace/g;
+      		$cmd .= "$osm_settings ";       
+       }
+	else{
+	 $cmd .= "-osm-model $osm/operationLM.bin ";
+	}
+    }
+	
+    # sparse lexical features provide additional content for config file
+    $cmd .= "-additional-ini-file $sparse_lexical_features.ini " if $sparse_lexical_features;
+
     my @LM_SETS = &get_sets("LM");
     my %INTERPOLATED_AWAY;
     my %OUTPUT_FACTORS;
@@ -2200,18 +2254,6 @@ sub define_training_create_config {
 
 	    $cmd .= "-lm $factor:$order:$lm_file:$type ";
     }
-
-    my $additional_ini = &get("TRAINING:additional-ini");
-    if (&get("TRAINING:score-settings") && 
-        &get("TRAINING:score-settings") =~ /SparseCountBinFeature/) {
-      $additional_ini .= "<br>[report-sparse-features]<br>stm<br><br>";
-      $cmd .= "-sparse-translation-table ";
-    }
-    $cmd .= "-additional-ini '$additional_ini' " if defined($additional_ini);
-
-    # sparse lexical features provide additional content for config file
-    $cmd .= "-additional-ini-file $sparse_lexical_features.ini " if $sparse_lexical_features;
-    $cmd .= &define_domain_feature_score_option($domains) if &get("TRAINING:domain-features");
 
     &create_step($step_id,$cmd);
 }
@@ -2526,6 +2568,8 @@ sub define_tuningevaluation_filter {
 
     # get model, and whether suffix array is used. Determines the pt implementation.
     my $sa_exec_dir = &get("TRAINING:suffix-array");
+    my $sa_extractors = &get("GENERAL:sa_extractors");
+    $sa_extractors = 1 unless $sa_extractors;
 
     my ($ptImpl, $numFF);
     if ($hierarchical) {
@@ -2538,7 +2582,7 @@ sub define_tuningevaluation_filter {
 	}
     }
     else {
-	$ptImpl = 0; # phrase-based
+    	$ptImpl = 0; # phrase-based
     }
 
     # config file specified?
@@ -2552,42 +2596,25 @@ sub define_tuningevaluation_filter {
     # create pseudo-config file
     else {
       $config = $tuning_flag ? "$dir/tuning/moses.table.ini.$VERSION" : "$dir/evaluation/$set.moses.table.ini.$VERSION";
+      $cmd = "touch $config\n";
       $delete_config = 1;
-      $cmd = &get_training_setting(9);
-      $cmd .= &define_domain_feature_score_option($domains) if &get("TRAINING:domain-features");
-    
-      my $ptCmd = $phrase_translation_table;
-      $ptCmd .= ":$ptImpl" if $ptImpl>0;
-      $ptCmd .= ":$numFF" if defined($numFF);
-      $cmd .= &get_table_name_settings("translation-factors","phrase-translation-table", $ptCmd);
-      $cmd .= &get_table_name_settings("reordering-factors","reordering-table", $reordering_table)
-	  if $reordering_table;
-      # additional settings for hierarchical models
-      if (&get("TRAINING:hierarchical-rule-set")) {
-        my $extract_version = $VERSION;
-        $extract_version = $RE_USE[$STEP_LOOKUP{"TRAINING:extract-phrases"}] 
-          if defined($STEP_LOOKUP{"TRAINING:extract-phrases"});
-        my $glue_grammar_file = &get("TRAINING:glue-grammar");
-        $glue_grammar_file = &versionize(&long_file_name("glue-grammar","model",""),$extract_version) 
-          unless $glue_grammar_file;
-        $cmd .= "-glue-grammar-file $glue_grammar_file ";
-      }
-      if (&get("TRAINING:score-settings") && 
-          &get("TRAINING:score-settings") =~ /SparseCountBinFeature/) {
-        $cmd .= "-sparse-translation-table ";
-      }
-      $cmd .= "-lm 0:3:$dir "; # dummy
-      $cmd .= "-config $config\n";
+      
+      $cmd .= &get_config_tables($config,$reordering_table,$phrase_translation_table,undef,$domains);
+
+      $cmd .= "-lm 0:3:$config:8\n"; # dummy kenlm 3-gram model on factor 0
     }
 
     # filter command
     if ($sa_exec_dir) {
 	# suffix array
-	$cmd .= "$scripts/training/wrappers/adam-suffix-array/suffix-array-extract.sh $sa_exec_dir $phrase_translation_table $input_filter $filter_dir \n";
+	$cmd .= "$scripts/training/wrappers/adam-suffix-array/suffix-array-extract.sh $sa_exec_dir $phrase_translation_table $input_filter $filter_dir $sa_extractors \n";
 	
 	my $escaped_filter_dir = $filter_dir;
 	$escaped_filter_dir =~ s/\//\\\\\//g;
 	$cmd .= "cat $config | sed s/10\\ 0\\ 0\\ 7.*/10\\ 0\\ 0\\ 7\\ $escaped_filter_dir/g > $filter_dir/moses.ini \n";
+    # kind of a hack -- the correct thing would be to make the generation of the config file ($filter_dir/moses.ini) 
+    # set the PhraseDictionaryALSuffixArray's path to the filtered directory rather than to the suffix array itself 
+    $cmd .= "sed -i 's%path=$phrase_translation_table%path=$filter_dir%' $filter_dir/moses.ini\n";
     }
     else {
 	# normal phrase table
@@ -2607,7 +2634,8 @@ sub define_evaluation_decode {
     my $dir = &check_and_get("GENERAL:working-dir");
     
     my ($system_output,
-	$config,$input) = &get_output_and_input($step_id);
+	$config,$input,$filtered_config) = &get_output_and_input($step_id);
+    $config = $filtered_config if $filtered_config;
 
     my $jobs = &backoff_and_get("EVALUATION:$set:jobs");
     my $decoder = &check_backoff_and_get("EVALUATION:$set:decoder");
@@ -2618,6 +2646,7 @@ sub define_evaluation_decode {
     my $report_segmentation = &backoff_and_get("EVALUATION:$set:report-segmentation");
     my $analyze_search_graph = &backoff_and_get("EVALUATION:$set:analyze-search-graph");
     my $report_precision_by_coverage = &backoff_and_get("EVALUATION:$set:report-precision-by-coverage");
+    my $use_wade = &backoff_and_get("EVALUATION:$set:wade");
     my $hierarchical = &get("TRAINING:hierarchical-rule-set");
     my $word_alignment = &backoff_and_get("TRAINING:include-word-alignment-in-rules");
 
@@ -2637,6 +2666,9 @@ sub define_evaluation_decode {
       else {
         $settings .= " -t";
       }
+    }
+    if ($use_wade) {
+      $settings .= " -T $system_output.details";
     }
     $settings .= " -text-type \"test\"";
 

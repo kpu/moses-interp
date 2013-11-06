@@ -31,18 +31,17 @@ my($_EXTERNAL_BINDIR, $_ROOT_DIR, $_CORPUS_DIR, $_GIZA_E2F, $_GIZA_F2E, $_MODEL_
    $_DECODING_GRAPH_BACKOFF,
    $_DECODING_STEPS, $_PARALLEL, $_FACTOR_DELIMITER, @_PHRASE_TABLE,
    @_REORDERING_TABLE, @_GENERATION_TABLE, @_GENERATION_TYPE, $_GENERATION_CORPUS,
-   $_DONT_ZIP,  $_MGIZA, $_MGIZA_CPUS, $_SNT2COOC, $_HMM_ALIGN, $_CONFIG,
-   $_HIERARCHICAL,$_XML,$_SOURCE_SYNTAX,$_TARGET_SYNTAX,$_GLUE_GRAMMAR,$_GLUE_GRAMMAR_FILE,$_UNKNOWN_WORD_LABEL_FILE,$_GHKM,$_PCFG,@_EXTRACT_OPTIONS,@_SCORE_OPTIONS,
+   $_DONT_ZIP,  $_MGIZA, $_MGIZA_CPUS, $_SNT2COOC, $_HMM_ALIGN, $_CONFIG, $_OSM, $_OSM_FACTORS,
+   $_HIERARCHICAL,$_XML,$_SOURCE_SYNTAX,$_TARGET_SYNTAX,$_GLUE_GRAMMAR,$_GLUE_GRAMMAR_FILE,$_UNKNOWN_WORD_LABEL_FILE,$_GHKM,$_GHKM_TREE_FRAGMENTS,$_PCFG,@_EXTRACT_OPTIONS,@_SCORE_OPTIONS,
    $_ALT_DIRECT_RULE_SCORE_1, $_ALT_DIRECT_RULE_SCORE_2,
    $_OMIT_WORD_ALIGNMENT,$_FORCE_FACTORED_FILENAMES,
    $_MEMSCORE, $_FINAL_ALIGNMENT_MODEL,
    $_CONTINUE,$_MAX_LEXICAL_REORDERING,$_DO_STEPS,
    @_ADDITIONAL_INI,$_ADDITIONAL_INI_FILE,
-   $_SPARSE_TRANSLATION_TABLE, @_BASELINE_ALIGNMENT_MODEL, $_BASELINE_EXTRACT, $_BASELINE_ALIGNMENT,
-   $_DICTIONARY, $_SPARSE_PHRASE_FEATURES, $_EPPEX, $_INSTANCE_WEIGHTS_FILE, $_LMODEL_OOV_FEATURE, $IGNORE);
+   @_BASELINE_ALIGNMENT_MODEL, $_BASELINE_EXTRACT, $_BASELINE_ALIGNMENT,
+   $_DICTIONARY, $_SPARSE_PHRASE_FEATURES, $_EPPEX, $_INSTANCE_WEIGHTS_FILE, $_LMODEL_OOV_FEATURE, $_NUM_LATTICE_FEATURES, $IGNORE, $_FLEXIBILITY_SCORE);
 my $_BASELINE_CORPUS = "";
 my $_CORES = 1;
-
 my $debug = 0; # debug this script, do not delete any files in debug mode
 
 $_HELP = 1
@@ -60,10 +59,10 @@ $_HELP = 1
 		       'write-lexical-counts' => \$_LEXICAL_COUNTS,
 		       'model-dir=s' => \$_MODEL_DIR,
 		       'temp-dir=s' => \$_TEMP_DIR,
-           'sort-buffer-size=s' => \$_SORT_BUFFER_SIZE,
-           'sort-batch-size=i' => \$_SORT_BATCH_SIZE,
-           'sort-compress=s' => \$_SORT_COMPRESS,
-           'sort-parallel=i' => \$_SORT_PARALLEL,
+		       'sort-buffer-size=s' => \$_SORT_BUFFER_SIZE,
+		       'sort-batch-size=i' => \$_SORT_BATCH_SIZE,
+		       'sort-compress=s' => \$_SORT_COMPRESS,
+		       'sort-parallel=i' => \$_SORT_PARALLEL,
 		       'extract-file=s' => \$_EXTRACT_FILE,
 		       'alignment=s' => \$_ALIGNMENT,
 		       'alignment-file=s' => \$_ALIGNMENT_FILE,
@@ -95,7 +94,7 @@ $_HELP = 1
 		       'generation-factors=s' => \$_GENERATION_FACTORS,
 		       'decoding-steps=s' => \$_DECODING_STEPS,
 		       'decoding-graph-backoff=s' => \$_DECODING_GRAPH_BACKOFF,
-    			 'bin-dir=s' => \$IGNORE,
+		       'bin-dir=s' => \$IGNORE,
 		       'scripts-root-dir=s' => \$IGNORE,
 		       'factor-delimiter=s' => \$_FACTOR_DELIMITER,
 		       'phrase-translation-table=s' => \@_PHRASE_TABLE,
@@ -109,6 +108,7 @@ $_HELP = 1
 		       'glue-grammar-file=s' => \$_GLUE_GRAMMAR_FILE,
 		       'unknown-word-label-file=s' => \$_UNKNOWN_WORD_LABEL_FILE,
 		       'ghkm' => \$_GHKM,
+		       'ghkm-tree-fragments' => \$_GHKM_TREE_FRAGMENTS,
 		       'pcfg' => \$_PCFG,
 		       'alt-direct-rule-score-1' => \$_ALT_DIRECT_RULE_SCORE_1,
 		       'alt-direct-rule-score-2' => \$_ALT_DIRECT_RULE_SCORE_2,
@@ -119,23 +119,26 @@ $_HELP = 1
 		       'xml' => \$_XML,
 		       'no-word-alignment' => \$_OMIT_WORD_ALIGNMENT,
 		       'config=s' => \$_CONFIG,
+		       'osm-model=s' => \$_OSM,
+			'osm-setting=s' => \$_OSM_FACTORS,		
 		       'max-lexical-reordering' => \$_MAX_LEXICAL_REORDERING,
 		       'do-steps=s' => \$_DO_STEPS,
 		       'memscore:s' => \$_MEMSCORE,
 		       'force-factored-filenames' => \$_FORCE_FACTORED_FILENAMES,
 		       'dictionary=s' => \$_DICTIONARY,
-           'sparse-phrase-features' => \$_SPARSE_PHRASE_FEATURES,
+		       'sparse-phrase-features' => \$_SPARSE_PHRASE_FEATURES,
 		       'eppex:s' => \$_EPPEX,
 		       'additional-ini=s' => \@_ADDITIONAL_INI, 
 		       'additional-ini-file=s' => \$_ADDITIONAL_INI_FILE, 
-		       'sparse-translation-table' => \$_SPARSE_TRANSLATION_TABLE,
 		       'baseline-alignment-model=s{8}' => \@_BASELINE_ALIGNMENT_MODEL,
 		       'baseline-extract=s' => \$_BASELINE_EXTRACT,
 		       'baseline-corpus=s' => \$_BASELINE_CORPUS,
 		       'baseline-alignment=s' => \$_BASELINE_ALIGNMENT,
 		       'cores=i' => \$_CORES,
-           'instance-weights-file=s' => \$_INSTANCE_WEIGHTS_FILE,
-           'lmodel-oov-feature' => \$_LMODEL_OOV_FEATURE,
+		       'instance-weights-file=s' => \$_INSTANCE_WEIGHTS_FILE,
+		       'lmodel-oov-feature' => \$_LMODEL_OOV_FEATURE,
+		       'num-lattice-features=i' => \$_NUM_LATTICE_FEATURES,
+		       'flexibility-score' => \$_FLEXIBILITY_SCORE,
                );
 
 if ($_HELP) {
@@ -321,6 +324,7 @@ my $PHRASE_SCORE = "$SCRIPTS_ROOTDIR/../bin/score";
 $PHRASE_SCORE = "$SCRIPTS_ROOTDIR/generic/score-parallel.perl $_CORES \"$SORT_EXEC $__SORT_BUFFER_SIZE $__SORT_BATCH_SIZE $__SORT_COMPRESS $__SORT_PARALLEL\" $PHRASE_SCORE";
 
 my $PHRASE_CONSOLIDATE = "$SCRIPTS_ROOTDIR/../bin/consolidate";
+my $FLEX_SCORER = "$SCRIPTS_ROOTDIR/training/flexibility_score.py";
 
 # utilities
 my $ZCAT = "gzip -cd";
@@ -445,7 +449,7 @@ if ($STEPS[9]) {
     die "ERROR: Filename is not absolute: $filename"
       unless file_name_is_absolute $filename;
     die "ERROR: Language model file not found or empty: $filename"
-      if ! -s $filename;
+      if ! -e $filename;
     push @___LM, [ $f, $order, $filename, $type ];
   }
 }
@@ -1403,6 +1407,7 @@ sub extract_phrase {
         $cmd .= " --PCFG" if $_PCFG;
         $cmd .= " --UnpairedExtractFormat" if $_ALT_DIRECT_RULE_SCORE_1 || $_ALT_DIRECT_RULE_SCORE_2;
         $cmd .= " --ConditionOnTargetLHS" if $_ALT_DIRECT_RULE_SCORE_1;
+        $cmd .= " --TreeFragments" if $_GHKM_TREE_FRAGMENTS;
         if (!defined($_GHKM)) {
           $cmd .= " --SourceSyntax" if $_SOURCE_SYNTAX;
           $cmd .= " --TargetSyntax" if $_TARGET_SYNTAX;
@@ -1434,6 +1439,7 @@ sub extract_phrase {
     $cmd .= " --GZOutput ";
     $cmd .= " --InstanceWeights $_INSTANCE_WEIGHTS_FILE " if defined $_INSTANCE_WEIGHTS_FILE;
     $cmd .= " --BaselineExtract $_BASELINE_EXTRACT" if defined($_BASELINE_EXTRACT) && $PHRASE_EXTRACT =~ /extract-parallel.perl/;
+    $cmd .= " --FlexibilityScore" if $_FLEXIBILITY_SCORE;
     
     map { die "File not found: $_" if ! -e $_ } ($alignment_file_e, $alignment_file_f, $alignment_file_a);
     print STDERR "$cmd\n";
@@ -1454,7 +1460,6 @@ sub extract_phrase {
     foreach my $f (@tempfiles) {
       unlink $f;
     }
-    
 }
 
 ### (6) PHRASE SCORING
@@ -1468,21 +1473,23 @@ sub score_phrase_factored {
 	&score_phrase($file,$___LEXICAL_FILE,$___EXTRACT_FILE);
     }
     else {
+	my $table_id = 0;
 	foreach my $factor (split(/\+/,$___TRANSLATION_FACTORS)) {
 	    print STDERR "(6) [$factor] score phrases @ ".`date`;
 	    my ($factor_f,$factor_e) = split(/\-/,$factor);
 	    my $file = "$___MODEL_DIR/".($_HIERARCHICAL?"rule-table":"phrase-table").".$factor";
 	    $file = shift @SPECIFIED_TABLE if scalar(@SPECIFIED_TABLE);
-	    &score_phrase($file,$___LEXICAL_FILE.".".$factor,$___EXTRACT_FILE.".".$factor);
+	    &score_phrase($file,$___LEXICAL_FILE.".".$factor,$___EXTRACT_FILE.".".$factor,$table_id);
+	    $table_id++;
 	}
     }
 }
 
 sub score_phrase {
-    my ($ttable_file,$lexical_file,$extract_file) = @_;
+    my ($ttable_file,$lexical_file,$extract_file,$table_id) = @_;
 
     if ($___PHRASE_SCORER eq "phrase-extract") {
-        &score_phrase_phrase_extract($ttable_file,$lexical_file,$extract_file);
+        &score_phrase_phrase_extract($ttable_file,$lexical_file,$extract_file,$table_id);
     } elsif ($___PHRASE_SCORER eq "memscore") {
         &score_phrase_memscore($ttable_file,$lexical_file,$extract_file);
     } else {
@@ -1491,7 +1498,7 @@ sub score_phrase {
 }
 
 sub score_phrase_phrase_extract {
-    my ($ttable_file,$lexical_file,$extract_file) = @_;
+    my ($ttable_file,$lexical_file,$extract_file,$table_id) = @_;
 
     # distinguish between score and consolidation options
     my $ONLY_DIRECT = (defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /OnlyDirect/);
@@ -1502,6 +1509,13 @@ sub score_phrase_phrase_extract {
     $COUNT_BIN = $1 if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /\-CountBinFeature ([\s\d]*\d)/;
     $DOMAIN = $1 if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /(\-+[a-z]*Domain[a-z]+ .+)/i;
     $DOMAIN =~ s/ \-.+//g;
+    if ($DOMAIN =~ /^(.+) table ([\d\,]+) *$/) {
+      my ($main_spec,$specified_tables) = ($1,$2);
+      $DOMAIN = "--IgnoreSentenceId";
+      foreach my $specified_table_id (split(/,/,$specified_tables)) {
+	$DOMAIN = $main_spec if $specified_table_id == $table_id;
+      }
+    }
     my $SINGLETON = (defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /Singleton/);
     my $CROSSEDNONTERM = (defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /CrossedNonTerm/);
 
@@ -1543,7 +1557,7 @@ sub score_phrase_phrase_extract {
 	      my $inverse = "";
               my $extract_filename = $extract_file;
 	      if ($direction eq "e2f") {
-	          $inverse = " --Inverse";
+	          $inverse = "--Inverse";
                   $extract_filename = $extract_file.".inv";
               }
               
@@ -1562,8 +1576,10 @@ sub score_phrase_phrase_extract {
         $cmd .= " --PCFG" if $_PCFG;
         $cmd .= " --UnpairedExtractFormat" if $_ALT_DIRECT_RULE_SCORE_1 || $_ALT_DIRECT_RULE_SCORE_2;
         $cmd .= " --ConditionOnTargetLHS" if $_ALT_DIRECT_RULE_SCORE_1;
+        $cmd .= " --TreeFragments" if $_GHKM_TREE_FRAGMENTS;
         $cmd .= " $DOMAIN" if $DOMAIN;
         $cmd .= " $CORE_SCORE_OPTIONS" if defined($_SCORE_OPTIONS);
+        $cmd .= " --FlexibilityScore=$FLEX_SCORER" if $_FLEXIBILITY_SCORE;
 
 				# sorting
 				if ($direction eq "e2f" || $_ALT_DIRECT_RULE_SCORE_1 || $_ALT_DIRECT_RULE_SCORE_2) {
@@ -1828,14 +1844,15 @@ sub create_ini {
       die "ERROR: No translation steps defined, cannot prepare [input-factors] section\n";
     }
 
+    # mapping steps
     my %stepsused;
     print INI "\n# mapping steps
 [mapping]\n";
-   my $path = 0;
-   my %FIRST_TTABLE;
-   foreach (split(/:/,$___DECODING_STEPS)) {
-     my $first_ttable_flag = 1;
-     foreach (split(/,/,$_)) {
+    my $path = 0;
+    my %FIRST_TTABLE;
+    foreach (split(/:/,$___DECODING_STEPS)) {
+      my $first_ttable_flag = 1;
+      foreach (split(/,/,$_)) {
        s/t/T /g; 
        s/g/G /g;
        my ($type, $num) = split /\s+/;
@@ -1858,19 +1875,20 @@ sub create_ini {
        print INI "$_\n";
      }
    }
-   print INI "\n# translation tables: table type (hierarchical(0), textual (0), binary (1)), source-factors, target-factors, number of scores, file 
-# OLD FORMAT is still handled for back-compatibility
-# OLD FORMAT translation tables: source-factors, target-factors, number of scores, file 
-# OLD FORMAT a binary table type (1) is assumed 
-[ttable-file]\n";
-   my $num_of_ttables = 0;
+
+   my $feature_spec = "";
+   my $weight_spec = "";
+   # translation tables
+   my $i=0;
    my @SPECIFIED_TABLE = @_PHRASE_TABLE;
+
+   # number of weights
    my $basic_weight_count = 4; # both directions, lex and phrase
    $basic_weight_count-=2 if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /NoLex/;
    $basic_weight_count+=2 if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /UnalignedPenalty/; # word ins/del
    $basic_weight_count+=2 if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /UnalignedFunctionWordPenalty/;
    $basic_weight_count /= 2 if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /OnlyDirect/;
-   $basic_weight_count++ unless defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /NoPhraseCount/; # phrase count feature
+   $basic_weight_count++ if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /PhraseCount/; # phrase count feature
    $basic_weight_count++ if defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /LowCountFeature/; # low count feature
    if (defined($_SCORE_OPTIONS) && $_SCORE_OPTIONS =~ /(\-CountBinFeature [\s\d]*\d)/) {
      $basic_weight_count += scalar split(/\s+/,$1);
@@ -1882,66 +1900,146 @@ sub create_ini {
      $basic_weight_count += 2**$count-1 if $method eq "Subset";
    }     
    $basic_weight_count++ if $_PCFG;
+   $basic_weight_count+=4 if $_FLEXIBILITY_SCORE;
+   $basic_weight_count+=2 if $_FLEXIBILITY_SCORE && $_HIERARCHICAL;
+
+   # go over each table
    foreach my $f (split(/\+/,$___TRANSLATION_FACTORS)) {
-  	$num_of_ttables++;
-    my $ff = $f;
-    $ff =~ s/\-/ /;
-    my $file = "$___MODEL_DIR/".($_HIERARCHICAL?"rule-table":"phrase-table").($___NOT_FACTORED ? "" : ".$f").".gz";
-    my $phrase_table_impl = ($_HIERARCHICAL? 6 : 0);
+     my ($input_factor,$output_factor) = split(/\-/,$f);
+     my $file = "$___MODEL_DIR/".($_HIERARCHICAL?"rule-table":"phrase-table").($___NOT_FACTORED ? "" : ".$f").".gz";
+     my $phrase_table_impl = ($_HIERARCHICAL? 6 : 0);
 
-		if (scalar(@SPECIFIED_TABLE)) {
-	    $file = shift @SPECIFIED_TABLE;
-	    my @toks = split(/:/,$file);
-			$file = $toks[0];
-      if (@toks > 1) {
-			  $phrase_table_impl = $toks[1];
-			}
-			if (@toks == 3) {
-				$basic_weight_count = $toks[2];
-			}
-		}
-		else {
+     # specified file name?
+     if (scalar(@SPECIFIED_TABLE)) {
+       $file = shift @SPECIFIED_TABLE;
+       my @toks = split(/:/,$file);
+       $file = $toks[0];
+       if (@toks > 1) {
+         $phrase_table_impl = $toks[1];
+       }
+       if (@toks == 3) {
+         $basic_weight_count = $toks[2];
+       }
+     }
 
-		}
-		
-    print INI "$phrase_table_impl $ff $basic_weight_count $file";
-    print INI " sparse" if defined($_SPARSE_TRANSLATION_TABLE);
-    print INI "\n";
+     # name of type
+     my $phrase_table_impl_name = "UnknownPtImplementation";
+     $phrase_table_impl_name = "PhraseDictionaryMemory" if $phrase_table_impl==0;
+     $phrase_table_impl_name = "PhraseDictionaryBinary" if $phrase_table_impl==1;
+     $phrase_table_impl_name = "PhraseDictionaryOnDisk" if $phrase_table_impl==2;
+     $phrase_table_impl_name = "PhraseDictionaryMemory" if $phrase_table_impl==6;
+     $phrase_table_impl_name = "PhraseDictionaryALSuffixArray" if $phrase_table_impl==10;
+
+     #table limit
+     my $table_limit = 0;
+     if ($i == 0) {
+       $table_limit = 20;
+     }
+     # sum up...
+     $feature_spec .= "$phrase_table_impl_name name=TranslationModel$i table-limit=$table_limit num-features=$basic_weight_count path=$file input-factor=$input_factor output-factor=$output_factor\n";
+     $weight_spec .= "TranslationModel$i=";
+     for(my $j=0;$j<$basic_weight_count;$j++) { $weight_spec .= " 0.2"; }
+     $weight_spec .= "\n";
+
+     $i++;
    }
+
+   if ($i != $stepsused{"T"}) {
+     print STDERR "WARNING: Your [mapping-steps] require translation steps up to id $stepsused{T} but you defined translation steps 0..$i\n";
+     exit 1 if $i < $stepsused{"T"}; # fatal to define less
+   }
+
+   # glue grammar
    if ($_GLUE_GRAMMAR) {
      &full_path(\$___GLUE_GRAMMAR_FILE);
-     print INI "6 0 0 1 $___GLUE_GRAMMAR_FILE\n";
-   }
-   if ($num_of_ttables != $stepsused{"T"}) {
-     print STDERR "WARNING: Your [mapping-steps] require translation steps up to id $stepsused{T} but you defined translation steps 0..$num_of_ttables\n";
-     exit 1 if $num_of_ttables < $stepsused{"T"}; # fatal to define less
+     $feature_spec .= "PhraseDictionaryMemory name=TranslationModel$i num-features=1 path=$___GLUE_GRAMMAR_FILE input-factor=0 output-factor=0\n";
+     $weight_spec .= "TranslationModel$i= 1.0\n";
    }
 
-    if (defined $___GENERATION_FACTORS) {
+   # generation model
+   if (defined $___GENERATION_FACTORS) {
       my @TYPE = @_GENERATION_TYPE;
-      print INI "\n# generation models: source-factors, target-factors, number-of-weights, filename\n";
-      print INI "[generation-file]\n";
-      my $cnt = 0;
+      my $i=0;
       my @SPECIFIED_TABLE = @_GENERATION_TABLE;
       foreach my $f (split(/\+/,$___GENERATION_FACTORS)) {
         my $weights_per_generation_model = 2;
         $weights_per_generation_model = 1 if scalar(@TYPE) && (shift @TYPE) eq 'single';
-        $cnt++;
-        my $ff = $f;
-        $ff =~ s/\-/ /;
+        my ($input_factor,$output_factor) = split(/\-/,$f);
 	my $file = "$___MODEL_DIR/generation.$f";
 	$file = shift @SPECIFIED_TABLE if scalar(@SPECIFIED_TABLE);
-        print INI "$ff $weights_per_generation_model $file\n";
+        $file .= ".gz" if ! -e $file && -e $file.".gz";
+        $feature_spec .= "Generation name=GenerationModel$i num-features=$weights_per_generation_model path=$file input-factor=$input_factor output-factor=$output_factor\n";
+        $weight_spec .= "GenerationModel$i= 0.3".($weights_per_generation_model==2?" 0":"")."\n";
+        $i++;
       }
-      if ($cnt != $stepsused{"G"}) {
-        print STDERR "WARNING: Your [mapping-steps] require generation steps up to id $stepsused{G} but you defined generation steps 0..$cnt\n";
-        exit 1 if $cnt < $stepsused{"G"}; # fatal to define less
+      if ($i != $stepsused{"G"}) {
+        print STDERR "WARNING: Your [mapping-steps] require generation steps up to id $stepsused{G} but you defined generation steps 0..$i\n";
+        exit 1 if $i < $stepsused{"G"}; # fatal to define less
       }
-    } else {
-      print INI "\n# no generation models, no generation-file section\n";
-    }
+   }
 
-  print INI "\n# language models: type(srilm/irstlm), factors, order, file\n[lmodel-file]\n";
+  # lexicalized reordering model
+  if ($___REORDERING ne "distance") {
+    my $i = 0;
+ 
+    my @SPECIFIED_TABLE = @_REORDERING_TABLE;
+    foreach my $factor (split(/\+/,$___REORDERING_FACTORS)) {
+        my ($input_factor,$output_factor) = split(/\-/,$factor);
+	foreach my $model (@REORDERING_MODELS) {
+	    my $table_file = "$___MODEL_DIR/reordering-table";
+	    $table_file .= ".$factor" unless $___NOT_FACTORED;
+	    $table_file = shift @SPECIFIED_TABLE if scalar(@SPECIFIED_TABLE);
+	    $table_file .= ".";
+	    $table_file .= $model->{"filename"};
+	    $table_file .= ".gz";
+            $feature_spec .= "LexicalReordering name=LexicalReordering$i num-features=".$model->{"numfeatures"}." type=".$model->{"config"}." input-factor=$input_factor output-factor=$output_factor path=$table_file\n"; 
+            $weight_spec .= "LexicalReordering$i=";
+            for(my $j=0;$j<$model->{"numfeatures"};$j++) { $weight_spec .= " 0.3"; }
+            $weight_spec .= "\n";
+	}
+        $i++;
+      }
+  }
+
+  # operation sequence model
+
+  if($_OSM)
+  {
+    if (defined($_OSM_FACTORS))
+    {
+	my $count = 0;
+	my @factor_values = split(/\+/, $_OSM_FACTORS);
+    	foreach my $factor_val (@factor_values) {
+
+		my ($factor_f,$factor_e) = split(/\-/,$factor_val);
+
+		if($count == 0){
+		$feature_spec .= "OpSequenceModel name=OpSequenceModel$count num-features=5 path=". $_OSM . $factor_val . "/operationLM.bin" . " input-factor=". $factor_f . " output-factor=". $factor_e . " support-features=yes \n";
+	       $weight_spec  .= "OpSequenceModel$count= 0.08 -0.02 0.02 -0.001 0.03\n";		
+		}
+		else{
+			$feature_spec .= "OpSequenceModel name=OpSequenceModel$count num-features=1 path=". $_OSM . $factor_val . "/operationLM.bin" . " input-factor=". $factor_f . " output-factor=". $factor_e . " support-features=no \n";
+	       	$weight_spec  .= "OpSequenceModel$count= 0.08 \n";	
+
+		}
+		$count++;
+	}
+    }
+    else
+    {
+      $feature_spec .= "OpSequenceModel name=OpSequenceModel0 num-features=5 path=". $_OSM . " \n";
+      $weight_spec  .= "OpSequenceModel0= 0.08 -0.02 0.02 -0.001 0.03\n";
+    }
+  }	
+
+  # distance-based reordering
+  if (!$_HIERARCHICAL) {
+    $feature_spec .= "Distortion\n";
+    $weight_spec .= "Distortion0= 0.3\n";
+  }
+
+  # language model
+  $i=0;
   foreach my $lm (@___LM) {
     my ($f, $o, $fn, $type) = @{$lm};
     if ($fn !~ /^\//) {
@@ -1949,78 +2047,22 @@ sub create_ini {
       $fn = $path."/".$fn;
     }
     $type = 0 unless $type;
-    print INI "$type $f $o $fn\n";
+    my $type_name = "UnknownLM";
+    $type_name = "SRILM" if $type == 0;
+    $type_name = "IRSTLM" if $type == 1;
+    $type_name = "KENLM lazyken=0" if $type == 8;
+    $type_name = "KENLM lazyken=1" if $type == 9;
+    
+    $feature_spec .= "$type_name name=LM$i factor=$f path=$fn order=$o\n";
+    $weight_spec .= "LM$i= 0.5".($_LMODEL_OOV_FEATURE?" 0.1":"")."\n";
+    $i++;
+  }
+  if ($_LMODEL_OOV_FEATURE) {
+    print INI "\n# language model OOV feature enabled\n[lmodel-oov-feature]\n1\n\n";
   }
 
-  print INI "\n\n\# limit on how many phrase translations e for each phrase f are loaded\n# 0 = all elements loaded\n[ttable-limit]\n20\n";
-  foreach(1 .. ($num_of_ttables-1)) {
-    print INI (defined($FIRST_TTABLE{$_})?"20":"0")."\n";
-  }
+  # hierarchical model settings
   print INI "\n";
-
-  my $weight_d_count = 1;
-  if ($___REORDERING ne "distance") {
-    my $file = "# distortion (reordering) files\n\[distortion-file]\n";
-    my $factor_i = 0;
- 
-    my @SPECIFIED_TABLE = @_REORDERING_TABLE;
-    foreach my $factor (split(/\+/,$___REORDERING_FACTORS)) {
-	foreach my $model (@REORDERING_MODELS) {
-	    $weight_d_count += $model->{"numfeatures"};
-	    my $table_file = "$___MODEL_DIR/reordering-table";
-	    $table_file .= ".$factor" unless $___NOT_FACTORED;
-	    $table_file = shift @SPECIFIED_TABLE if scalar(@SPECIFIED_TABLE);
-	    $table_file .= ".";
-	    $table_file .= $model->{"filename"};
-	    $table_file .= ".gz";
-	    $file .= "$factor ".$model->{"config"}." ".$model->{"numfeatures"}." $table_file\n";
-	}
-        $factor_i++;
-      }
-      print INI $file."\n";
-  }
-  else {
-    $weight_d_count = 1;
-  }
-  
-  if (!$_HIERARCHICAL) {
-    print INI "# distortion (reordering) weight\n[weight-d]\n";
-    for(my $i=0;$i<$weight_d_count;$i++) { 
-      print INI "".(0.6/(scalar @REORDERING_MODELS+1))."\n";
-    }
-  }
-  print INI "\n# language model weights\n[weight-l]\n";
-  my $lmweighttotal = 0.5;
-  my $lmoovweighttotal = 0.1;
-  foreach(1..scalar @___LM) {
-    printf INI "%.4f\n", $lmweighttotal / scalar @___LM;
-    if ($_LMODEL_OOV_FEATURE) {
-      printf INI "%.4f\n", $lmoovweighttotal / scalar @___LM;
-    }
-  }
-
-  print INI "\n\n# translation model weights\n[weight-t]\n";
-  foreach my $f (split(/\+/,$___TRANSLATION_FACTORS)) {
-     for(1..$basic_weight_count) {
-       printf INI "%.2f\n", 1/$basic_weight_count;
-     }
-  }
-  print INI "1.0\n" if $_HIERARCHICAL; # glue grammar
-
-    if (defined $___GENERATION_FACTORS) {
-      print INI "\n# generation model weights\n";
-      print INI "[weight-generation]\n";
-      my @TYPE = @_GENERATION_TYPE;
-      foreach my $f (split(/\+/,$___GENERATION_FACTORS)) {
-        print INI "0.3\n";
-        print INI "0\n" unless scalar(@TYPE) && (shift @TYPE) eq 'single';
-      }
-    } else {
-      print INI "\n# no generation models, no weight-generation section\n";
-    }
-
-  print INI "\n# word penalty\n[weight-w]\n-1\n\n";
-
   if ($_HIERARCHICAL) {
     print INI "[unknown-lhs]\n$_UNKNOWN_WORD_LABEL_FILE\n\n" if $_TARGET_SYNTAX && defined($_UNKNOWN_WORD_LABEL_FILE);
     print INI "[cube-pruning-pop-limit]\n1000\n\n";
@@ -2031,6 +2073,7 @@ sub create_ini {
     foreach (split(/\+/,$___TRANSLATION_FACTORS)) { print INI "20\n"; }
     print INI "1000\n";
   }
+  # phrase-based model settings
   else {
     print INI "[distortion-limit]\n6\n";
   }
@@ -2040,8 +2083,14 @@ sub create_ini {
     print INI "\n# delimiter between factors in input\n[factor-delimiter]\n$___FACTOR_DELIMITER\n\n"
   }
 
-  if ($_LMODEL_OOV_FEATURE) {
-    print INI "\n# language model OOV feature enabled\n[lmodel-oov-feature]\n1\n\n";
+  # lattice feature
+  if ($_NUM_LATTICE_FEATURES) {
+    $feature_spec .= "InputFeature num-input-features=$_NUM_LATTICE_FEATURES\n";
+    $weight_spec .= "InputFeature0=";
+    for (1..$_NUM_LATTICE_FEATURES) {
+      $weight_spec .= " 0.1";
+    }
+    $weight_spec .= "\n";
   }
 
   # get addititional content for config file from switch or file
@@ -2054,6 +2103,20 @@ sub create_ini {
     print INI `cat $_ADDITIONAL_INI_FILE`;
   }
 
+  # feature functions and weights
+  print INI "\n# feature functions\n";
+  print INI "[feature]\n";
+  print INI "UnknownWordPenalty\n";
+  print INI "WordPenalty\n";
+  print INI "PhrasePenalty\n";
+  print INI $feature_spec;
+
+  print INI "\n# dense weights for feature functions\n";
+  print INI "[weight]\n";
+  print INI "UnknownWordPenalty0= 1\n";
+  print INI "WordPenalty0= -1\n";
+  print INI "PhrasePenalty0= 0.2\n";
+  print INI $weight_spec;
   close(INI);
 }
 
@@ -2106,4 +2169,5 @@ sub open_or_zcat {
   open($hdl,$read) or die "Can't read $fn ($read)";
   return $hdl;
 }
+
 

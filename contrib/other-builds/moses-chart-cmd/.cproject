@@ -26,11 +26,13 @@
 								<option id="gnu.cpp.compiler.exe.debug.option.debugging.level.1584931166" name="Debug Level" superClass="gnu.cpp.compiler.exe.debug.option.debugging.level" value="gnu.cpp.compiler.debugging.level.max" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.include.paths.65842083" name="Include paths (-I)" superClass="gnu.cpp.compiler.option.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="/opt/local/include/"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc}/../../cmph/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc}/../../boost/include&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc}/../..&quot;"/>
 								</option>
 								<option id="gnu.cpp.compiler.option.preprocessor.def.1785368241" name="Defined symbols (-D)" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_BOOST"/>
+									<listOptionValue builtIn="false" value="TRACE_ENABLE"/>
 									<listOptionValue builtIn="false" value="KENLM_MAX_ORDER=7"/>
 									<listOptionValue builtIn="false" value="WITH_THREADS"/>
 									<listOptionValue builtIn="false" value="MAX_NUM_FACTORS=4"/>
@@ -45,9 +47,13 @@
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.exe.debug.755343734" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.exe.debug"/>
 							<tool id="cdt.managedbuild.tool.gnu.cpp.linker.exe.debug.816413868" name="GCC C++ Linker" superClass="cdt.managedbuild.tool.gnu.cpp.linker.exe.debug">
 								<option id="gnu.cpp.link.option.paths.330225535" name="Library search path (-L)" superClass="gnu.cpp.link.option.paths" valueType="libPaths">
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../nplm/lib&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../boost/lib64&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../cmph/lib&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../boost/lib&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../boost/lib64&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../irstlm/lib&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../randlm/lib&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../srilm/lib/macosx&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../srilm/lib/i686-m64&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:}/../../srilm/lib/i686&quot;"/>
@@ -60,7 +66,6 @@
 								</option>
 								<option id="gnu.cpp.link.option.libs.1177721357" name="Libraries (-l)" superClass="gnu.cpp.link.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="dstruct"/>
-									<listOptionValue builtIn="false" value="rt"/>
 									<listOptionValue builtIn="false" value="flm"/>
 									<listOptionValue builtIn="false" value="oolm"/>
 									<listOptionValue builtIn="false" value="lattice"/>
@@ -68,15 +73,18 @@
 									<listOptionValue builtIn="false" value="moses"/>
 									<listOptionValue builtIn="false" value="search"/>
 									<listOptionValue builtIn="false" value="irstlm"/>
+									<listOptionValue builtIn="false" value="RandLM"/>
 									<listOptionValue builtIn="false" value="OnDiskPt"/>
 									<listOptionValue builtIn="false" value="lm"/>
 									<listOptionValue builtIn="false" value="util"/>
-									<listOptionValue builtIn="false" value="z"/>
-									<listOptionValue builtIn="false" value="boost_filesystem-mt"/>
 									<listOptionValue builtIn="false" value="boost_iostreams-mt"/>
 									<listOptionValue builtIn="false" value="boost_system-mt"/>
 									<listOptionValue builtIn="false" value="boost_thread-mt"/>
+									<listOptionValue builtIn="false" value="boost_filesystem-mt"/>
+									<listOptionValue builtIn="false" value="pthread"/>
+									<listOptionValue builtIn="false" value="z"/>
 									<listOptionValue builtIn="false" value="bz2"/>
+									<listOptionValue builtIn="false" value="dl"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.linker.input.128214028" superClass="cdt.managedbuild.tool.gnu.cpp.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
@@ -167,4 +175,5 @@
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
+	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 </cproject>

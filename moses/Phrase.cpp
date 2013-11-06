@@ -103,22 +103,26 @@ Phrase Phrase::GetSubString(const WordsRange &wordsRange) const
 
 Phrase Phrase::GetSubString(const WordsRange &wordsRange, FactorType factorType) const
 {
-	Phrase retPhrase(wordsRange.GetNumWordsCovered());
+  Phrase retPhrase(wordsRange.GetNumWordsCovered());
 
-	for (size_t currPos = wordsRange.GetStartPos() ; currPos <= wordsRange.GetEndPos() ; currPos++)
-	{
-		const Factor* f = GetFactor(currPos, factorType);
-		Word &word = retPhrase.AddWord();
-		word.SetFactor(factorType, f);
-	}
+  for (size_t currPos = wordsRange.GetStartPos() ; currPos <= wordsRange.GetEndPos() ; currPos++) {
+    const Factor* f = GetFactor(currPos, factorType);
+    Word &word = retPhrase.AddWord();
+    word.SetFactor(factorType, f);
+  }
 
-	return retPhrase;
+  return retPhrase;
 }
 
 std::string Phrase::GetStringRep(const vector<FactorType> factorsToPrint) const
 {
+  bool markUnknown = StaticData::Instance().GetMarkUnknown();
+
   stringstream strme;
   for (size_t pos = 0 ; pos < GetSize() ; pos++) {
+    if(markUnknown && GetWord(pos).IsOOV()) {
+      strme << "UNK";
+    }
     strme << GetWord(pos).GetString(factorsToPrint, (pos != GetSize()-1));
   }
 
@@ -152,46 +156,54 @@ void Phrase::PrependWord(const Word &newWord)
   m_words[0] = newWord;
 }
 
-void Phrase::CreateFromString(const std::vector<FactorType> &factorOrder, const StringPiece &phraseString, const StringPiece &factorDelimiter)
-{
-  FactorCollection &factorCollection = FactorCollection::Instance();
-
-  for (util::TokenIter<util::AnyCharacter, true> word_it(phraseString, util::AnyCharacter(" \t")); word_it; ++word_it) {
-    Word &word = AddWord();
-    size_t index = 0;
-    for (util::TokenIter<util::MultiCharacter, false> factor_it(*word_it, util::MultiCharacter(factorDelimiter)); 
-        factor_it && (index < factorOrder.size()); 
-        ++factor_it, ++index) {
-      word[factorOrder[index]] = factorCollection.AddFactor(*factor_it);
-    }
-    if (index != factorOrder.size()) {
-      TRACE_ERR( "[ERROR] Malformed input: '" << *word_it << "'" <<  std::endl
-                 << "In '" << phraseString << "'" << endl
-                 << "  Expected input to have words composed of " << factorOrder.size() << " factor(s) (form FAC1|FAC2|...)" << std::endl
-                 << "  but instead received input with " << index << " factor(s).\n");
-      abort();
-    }
-  }
-}
-
-void Phrase::CreateFromStringNewFormat(FactorDirection direction
-                                       , const std::vector<FactorType> &factorOrder
-                                       , const StringPiece &phraseString
-                                       , const std::string & /*factorDelimiter */
-                                       , Word &lhs)
+void Phrase::CreateFromString(FactorDirection direction
+                              ,const std::vector<FactorType> &factorOrder
+                              ,const StringPiece &phraseString
+                              ,const StringPiece &factorDelimiter
+                              ,Word **lhs)
 {
   // parse
   vector<StringPiece> annotatedWordVector;
   for (util::TokenIter<util::AnyCharacter, true> it(phraseString, "\t "); it; ++it) {
     annotatedWordVector.push_back(*it);
   }
+
+  if (annotatedWordVector.size() == 0) {
+    if (lhs) {
+      (*lhs) = NULL;
+    }
+    return;
+  }
+
   // KOMMA|none ART|Def.Z NN|Neut.NotGen.Sg VVFIN|none
-  //		to
+  //    to
   // "KOMMA|none" "ART|Def.Z" "NN|Neut.NotGen.Sg" "VVFIN|none"
 
-  m_words.reserve(annotatedWordVector.size()-1);
+  size_t numWords;
+  const StringPiece &annotatedWord = annotatedWordVector.back();
+  if (annotatedWord.size() >= 2
+      && *annotatedWord.data() == '['
+      && annotatedWord.data()[annotatedWord.size() - 1] == ']') {
+    // hiero/syntax rule
+    numWords = annotatedWordVector.size()-1;
 
-  for (size_t phrasePos = 0 ; phrasePos < annotatedWordVector.size() -  1 ; phrasePos++) {
+    // lhs
+    assert(lhs);
+    (*lhs) = new Word(true);
+    (*lhs)->CreateFromString(direction, factorOrder, annotatedWord.substr(1, annotatedWord.size() - 2), true);
+    assert((*lhs)->IsNonTerminal());
+  } else {
+    numWords = annotatedWordVector.size();
+    //CHECK(lhs == NULL);
+    if (lhs) {
+      (*lhs) = NULL;
+    }
+  }
+
+  // parse each word
+  m_words.reserve(numWords);
+
+  for (size_t phrasePos = 0 ; phrasePos < numWords; phrasePos++) {
     StringPiece &annotatedWord = annotatedWordVector[phrasePos];
     bool isNonTerminal;
     if (annotatedWord.size() >= 2 && *annotatedWord.data() == '[' && annotatedWord.data()[annotatedWord.size() - 1] == ']') {
@@ -213,13 +225,6 @@ void Phrase::CreateFromStringNewFormat(FactorDirection direction
     word.CreateFromString(direction, factorOrder, annotatedWord, isNonTerminal);
 
   }
-
-  // lhs
-  const StringPiece &annotatedWord = annotatedWordVector.back();
-  CHECK(annotatedWord.size() >= 2 && *annotatedWord.data() == '[' && annotatedWord.data()[annotatedWord.size() - 1] == ']');
-
-  lhs.CreateFromString(direction, factorOrder, annotatedWord.substr(1, annotatedWord.size() - 2), true);
-  assert(lhs.IsNonTerminal());
 }
 
 int Phrase::Compare(const Phrase &other) const
@@ -262,8 +267,8 @@ bool Phrase::Contains(const vector< vector<string> > &subPhraseVector
       FactorType factorType = inputFactor[currFactorIndex];
       for (size_t currSubPos = 0 ; currSubPos < subSize ; currSubPos++) {
         size_t currThisPos = currSubPos + currStartPos;
-        const string &subStr	= subPhraseVector[currSubPos][currFactorIndex]
-                                ,&thisStr	= GetFactor(currThisPos, factorType)->GetString();
+        const string &subStr	= subPhraseVector[currSubPos][currFactorIndex];
+        StringPiece thisStr	= GetFactor(currThisPos, factorType)->GetString();
         if (subStr != thisStr) {
           match = false;
           break;
@@ -345,6 +350,62 @@ void Phrase::InitializeMemPool()
 
 void Phrase::FinalizeMemPool()
 {
+}
+
+void Phrase::OnlyTheseFactors(const FactorMask &factors)
+{
+  for (unsigned int currFactor = 0 ; currFactor < MAX_NUM_FACTORS ; currFactor++) {
+    if (!factors[currFactor]) {
+      for (size_t pos = 0; pos < GetSize(); ++pos) {
+        SetFactor(pos, currFactor, NULL);
+      }
+    }
+  }
+}
+
+void Phrase::InitStartEndWord()
+{
+  FactorCollection &factorCollection = FactorCollection::Instance();
+
+  Word startWord(Input);
+  const Factor *factor = factorCollection.AddFactor(Input, 0, BOS_); // TODO - non-factored
+  startWord.SetFactor(0, factor);
+  PrependWord(startWord);
+
+  Word endWord(Input);
+  factor = factorCollection.AddFactor(Input, 0, EOS_); // TODO - non-factored
+  endWord.SetFactor(0, factor);
+  AddWord(endWord);
+}
+
+size_t Phrase::Find(const Phrase &sought, int maxUnknown) const
+{
+  size_t maxStartPos = GetSize() - sought.GetSize();
+  for (size_t startThisPos = 0; startThisPos <= maxStartPos; ++startThisPos) {
+    size_t thisPos = startThisPos;
+    int currUnknowns = 0;
+    size_t soughtPos;
+    for (soughtPos = 0; soughtPos < sought.GetSize(); ++soughtPos) {
+      const Word &soughtWord = sought.GetWord(soughtPos);
+      const Word &thisWord = GetWord(thisPos);
+
+      if (soughtWord == thisWord) {
+        ++thisPos;
+      } else if (soughtWord.IsOOV() && (maxUnknown < 0 || currUnknowns < maxUnknown)) {
+        // the output has an OOV word. Allow a certain number of OOVs
+        ++currUnknowns;
+        ++thisPos;
+      } else {
+        break;
+      }
+    }
+
+    if (soughtPos == sought.GetSize()) {
+      return startThisPos;
+    }
+  }
+
+  return NOT_FOUND;
 }
 
 TO_STRING_BODY(Phrase);

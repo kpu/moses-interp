@@ -24,65 +24,62 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <sstream>
 
 #include "SingleFactor.h"
+#include "PointerState.h"
+#include "moses/FF/FFState.h"
 #include "moses/TypeDef.h"
 #include "moses/Util.h"
 #include "moses/FactorCollection.h"
-#include "moses/FFState.h"
 #include "moses/Phrase.h"
 #include "moses/StaticData.h"
+#include "moses/FactorTypeSet.h"
 
 using namespace std;
 
 namespace Moses
 {
 
-LanguageModelSingleFactor::~LanguageModelSingleFactor()
-{
-}
-
-struct PointerState : public FFState {
-  const void* lmstate;
-  PointerState(const void* lms) {
-    lmstate = lms;
-  }
-  int Compare(const FFState& o) const {
-    const PointerState& other = static_cast<const PointerState&>(o);
-    if (other.lmstate > lmstate) return 1;
-    else if (other.lmstate < lmstate) return -1;
-    return 0;
-  }
-};
-
-LanguageModelPointerState::LanguageModelPointerState()
+LanguageModelSingleFactor::LanguageModelSingleFactor(const std::string &line)
+  :LanguageModelImplementation(line)
 {
   m_nullContextState = new PointerState(NULL);
   m_beginSentenceState = new PointerState(NULL);
 }
 
-LanguageModelPointerState::~LanguageModelPointerState()
-{
-  delete m_nullContextState;
-  delete m_beginSentenceState;
-}
+LanguageModelSingleFactor::~LanguageModelSingleFactor() {}
 
-const FFState *LanguageModelPointerState::GetNullContextState() const
+const FFState *LanguageModelSingleFactor::GetNullContextState() const
 {
   return m_nullContextState;
 }
 
-const FFState *LanguageModelPointerState::GetBeginSentenceState() const
+const FFState *LanguageModelSingleFactor::GetBeginSentenceState() const
 {
   return m_beginSentenceState;
 }
 
-FFState *LanguageModelPointerState::NewState(const FFState *from) const
+FFState *LanguageModelSingleFactor::NewState(const FFState *from) const
 {
   return new PointerState(from ? static_cast<const PointerState*>(from)->lmstate : NULL);
 }
 
-LMResult LanguageModelPointerState::GetValueForgotState(const std::vector<const Word*> &contextFactor, FFState &outState) const
+LMResult LanguageModelSingleFactor::GetValueForgotState(const std::vector<const Word*> &contextFactor, FFState &outState) const
 {
   return GetValue(contextFactor, &static_cast<PointerState&>(outState).lmstate);
+}
+
+bool LanguageModelSingleFactor::IsUseable(const FactorMask &mask) const
+{
+  bool ret = mask[m_factorType];
+  return ret;
+}
+
+void LanguageModelSingleFactor::SetParameter(const std::string& key, const std::string& value)
+{
+  if (key == "factor") {
+    m_factorType = Scan<FactorType>(value);
+  } else {
+    LanguageModelImplementation::SetParameter(key, value);
+  }
 }
 
 }

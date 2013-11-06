@@ -40,17 +40,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "moses/TypeDef.h"
 #include "moses/Sentence.h"
 #include "moses/FactorTypeSet.h"
-#include "moses/TranslationSystem.h"
 #include "moses/ChartTrellisPathList.h"
 #include "moses/OutputCollector.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/ChartTrellisPath.h"
 #include "search/applied.hh"
+#include "moses/ChartManager.h"
 
 namespace Moses
 {
 class FactorCollection;
 class ChartTrellisPathList;
+class ScoreComponentCollection;
 }
 
 namespace MosesChartCmd
@@ -70,10 +71,16 @@ protected:
   const Moses::FactorMask								&m_inputFactorUsed;
   std::ostream 				        					*m_outputSearchGraphStream;
   std::ostream                          *m_detailedTranslationReportingStream;
+  std::ostream                          *m_detailedTreeFragmentsTranslationReportingStream;
+  //DIMw
+  std::ostream                          *m_detailedAllTranslationReportingStream;
   std::ostream                          *m_alignmentInfoStream;
   std::string		        								m_inputFilePath;
   std::istream					        				*m_inputStream;
   Moses::OutputCollector                *m_detailOutputCollector;
+  Moses::OutputCollector                *m_detailTreeFragmentsOutputCollector;
+  //DIMw
+  Moses::OutputCollector                *m_detailAllOutputCollector;
   Moses::OutputCollector                *m_nBestOutputCollector;
   Moses::OutputCollector                *m_searchGraphOutputCollector;
   Moses::OutputCollector                *m_singleBestOutputCollector;
@@ -83,12 +90,21 @@ protected:
   size_t OutputAlignmentNBest(Alignments &retAlign, const Moses::ChartTrellisNode &node, size_t startTarget);
   size_t OutputAlignment(Alignments &retAlign, const Moses::ChartHypothesis *hypo, size_t startTarget);
   void OutputAlignment(std::vector< std::set<size_t> > &retAlignmentsS2T, const Moses::AlignmentInfo &ai);
+  void OutputTranslationOption(std::ostream &out, ApplicationContext &applicationContext, const Moses::ChartHypothesis *hypo, const Moses::Sentence &sentence, long translationId);
   void OutputTranslationOptions(std::ostream &out, ApplicationContext &applicationContext, const Moses::ChartHypothesis *hypo, const Moses::Sentence &sentence, long translationId);
+  void OutputTreeFragmentsTranslationOptions(std::ostream &out, ApplicationContext &applicationContext, const Moses::ChartHypothesis *hypo, const Moses::Sentence &sentence, long translationId);
   void ReconstructApplicationContext(const Moses::ChartHypothesis &hypo,
                                      const Moses::Sentence &sentence,
                                      ApplicationContext &context);
   void WriteApplicationContext(std::ostream &out,
                                const ApplicationContext &context);
+
+  void OutputAllFeatureScores(const Moses::ScoreComponentCollection &features
+                              , std::ostream &out);
+  void OutputFeatureScores( std::ostream& out
+                            , const Moses::ScoreComponentCollection &features
+                            , const Moses::FeatureFunction *ff
+                            , std::string &lastName );
 
 public:
   IOWrapper(const std::vector<Moses::FactorType>	&inputFactorOrder
@@ -104,9 +120,11 @@ public:
   void OutputBestHypo(search::Applied applied, long translationId);
   void OutputBestHypo(const std::vector<const Moses::Factor*>&  mbrBestHypo, long translationId);
   void OutputBestNone(long translationId);
-  void OutputNBestList(const Moses::ChartTrellisPathList &nBestList, const Moses::TranslationSystem* system, long translationId);
-  void OutputNBestList(const std::vector<search::Applied> &nbest, const Moses::TranslationSystem &system, long translationId);
+  void OutputNBestList(const Moses::ChartTrellisPathList &nBestList, long translationId);
+  void OutputNBestList(const std::vector<search::Applied> &nbest, long translationId);
   void OutputDetailedTranslationReport(const Moses::ChartHypothesis *hypo, const Moses::Sentence &sentence, long translationId);
+  void OutputDetailedTreeFragmentsTranslationReport(const Moses::ChartHypothesis *hypo, const Moses::Sentence &sentence, long translationId);
+  void OutputDetailedAllTranslationReport(const Moses::ChartTrellisPathList &nBestList, const Moses::ChartManager &manager, const Moses::Sentence &sentence, long translationId);
   void Backtrack(const Moses::ChartHypothesis *hypo);
 
   void ResetTranslationId();

@@ -35,53 +35,30 @@ class Factor;
 class LanguageModelSingleFactor : public LanguageModelImplementation
 {
 protected:
-  const Factor *m_sentenceStart, *m_sentenceEnd;
-  FactorType	m_factorType;
-
-	LanguageModelSingleFactor() {}
-
-public:
-	virtual ~LanguageModelSingleFactor();
-	virtual bool Load(const std::string &filePath
-					, FactorType factorType
-					, size_t nGramOrder) = 0;
-
-	LMType GetLMType() const
-	{
-		return SingleFactor;
-	}
-
-	bool Useable(const Phrase &phrase) const
-	{
-		return (phrase.GetSize()>0 && phrase.GetFactor(0, m_factorType) != NULL);		
-	}
-	
-	const Factor *GetSentenceStart() const
-	{
-		return m_sentenceStart;
-	}
-	const Factor *GetSentenceEnd() const
-	{
-		return m_sentenceEnd;
-	}
-	FactorType GetFactorType() const
-	{
-		return m_factorType;
-	}
-};
-
-// Single factor LM that uses a null pointer state.
-class LanguageModelPointerState : public LanguageModelSingleFactor
-{
-private:
-  FFState *m_nullContextState;
-  FFState *m_beginSentenceState;
-protected:
   typedef const void *State;
 
-  LanguageModelPointerState();
+  const Factor *m_sentenceStart, *m_sentenceEnd;
 
-  virtual ~LanguageModelPointerState();
+  FactorType	m_factorType;
+  FFState *m_nullContextState;
+  FFState *m_beginSentenceState;
+
+  LanguageModelSingleFactor(const std::string &line);
+
+public:
+  virtual ~LanguageModelSingleFactor();
+  bool IsUseable(const FactorMask &mask) const;
+  void SetParameter(const std::string& key, const std::string& value);
+
+  const Factor *GetSentenceStart() const {
+    return m_sentenceStart;
+  }
+  const Factor *GetSentenceEnd() const {
+    return m_sentenceEnd;
+  }
+  FactorType GetFactorType() const {
+    return m_factorType;
+  }
 
   virtual const FFState *GetNullContextState() const;
   virtual const FFState *GetBeginSentenceState() const;

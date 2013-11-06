@@ -7,6 +7,7 @@
 #include <iostream>
 #include "Word.h"
 #include "InputType.h"
+#include "NonTerminal.h"
 
 namespace Moses
 {
@@ -14,18 +15,18 @@ namespace Moses
 class FactorCollection;
 class TranslationOptionCollection;
 class Sentence;
-class TranslationSystem;
 
-/** An input to the decoder where each position can be 1 of a number of words, 
+/** An input to the decoder where each position can be 1 of a number of words,
  *  each with an associated probability. Compared with a sentence, where each position is a word
  */
 class ConfusionNet : public InputType
 {
 public:
-  typedef std::vector<std::pair<Word,std::vector<float> > > Column;
+  typedef std::vector<std::pair<Word, ScorePair > > Column;
 
 protected:
   std::vector<Column> data;
+  NonTerminalSet m_defaultLabelSet;
 
   bool ReadFormat0(std::istream&,const std::vector<FactorType>& factorOrder);
   bool ReadFormat1(std::istream&,const std::vector<FactorType>& factorOrder);
@@ -69,12 +70,12 @@ public:
   std::string GetStringRep(const std::vector<FactorType> factorsToPrint) const; //TODO not defined
   const Word& GetWord(size_t pos) const;
 
-  TranslationOptionCollection* CreateTranslationOptionCollection(const TranslationSystem* system) const;
+  TranslationOptionCollection* CreateTranslationOptionCollection() const;
 
   const NonTerminalSet &GetLabelSet(size_t /*startPos*/, size_t /*endPos*/) const {
-    CHECK(false);
-    return *(new NonTerminalSet());
+    return m_defaultLabelSet;
   }
+
 
 };
 

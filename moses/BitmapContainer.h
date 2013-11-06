@@ -42,6 +42,7 @@ class Hypothesis;
 class HypothesisStackCubePruning;
 class HypothesisQueueItem;
 class QueueItemOrderer;
+class TranslationOptionList;
 
 typedef std::vector< Hypothesis* > HypothesisSet;
 typedef std::set< BackwardsEdge* > BackwardsEdgeSet;
@@ -181,8 +182,7 @@ public:
                 , BitmapContainer &parent
                 , const TranslationOptionList &translations
                 , const SquareMatrix &futureScore,
-                const InputType& source,
-                const TranslationSystem* system);
+                const InputType& source);
   ~BackwardsEdge();
 
   bool GetInitialized();

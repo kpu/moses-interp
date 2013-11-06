@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <string>
 #include "TypeDef.h"
 #include "Util.h"
+#include "util/string_piece.hh"
 
 namespace Moses
 {
@@ -33,8 +34,8 @@ namespace Moses
 struct FactorFriend;
 class FactorCollection;
 
-/** Represents a factor (word, POS, etc).  
- * A Factor has a contiguous identifier and string value.  
+/** Represents a factor (word, POS, etc).
+ * A Factor has a contiguous identifier and string value.
  */
 class Factor
 {
@@ -44,22 +45,23 @@ class Factor
   friend class FactorCollection;
   friend struct FactorFriend;
 
-  // FactorCollection writes here.  
-  std::string m_string;
+  // FactorCollection writes here.
+  // This is mutable so the pointer can be changed to pool-backed memory.
+  mutable StringPiece m_string;
   size_t			m_id;
 
   //! protected constructor. only friend class, FactorCollection, is allowed to create Factor objects
   Factor() {}
 
-  // Needed for STL containers.  They'll delegate through FactorFriend, which is never exposed publicly.  
+  // Needed for STL containers.  They'll delegate through FactorFriend, which is never exposed publicly.
   Factor(const Factor &factor) : m_string(factor.m_string), m_id(factor.m_id) {}
 
-  // Not implemented.  Shouldn't be called.  
+  // Not implemented.  Shouldn't be called.
   Factor &operator=(const Factor &factor);
 
 public:
   //! original string representation of the factor
-  inline const std::string &GetString() const {
+  StringPiece GetString() const {
     return m_string;
   }
   //! contiguous ID

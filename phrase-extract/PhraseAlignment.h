@@ -11,7 +11,6 @@
 
 #include <vector>
 #include <set>
-#include <map>
 
 namespace MosesTraining
 {
@@ -23,8 +22,6 @@ protected:
   PHRASE phraseS;
   PHRASE phraseT;
 
-  std::map<size_t, std::pair<size_t, size_t> > m_ntLengths;
-  
   void createAlignVec(size_t sourceSize, size_t targetSize);
   void addNTLength(const std::string &tok);
 public:
@@ -32,6 +29,7 @@ public:
   float count;
   int sentenceId;
   std::string domain;
+  std::string treeFragment;
 
   std::vector< std::set<size_t> > alignedToT;
   std::vector< std::set<size_t> > alignedToS;
@@ -41,11 +39,10 @@ public:
   bool equals( const PhraseAlignment& );
   bool match( const PhraseAlignment& );
 
-	int Compare(const PhraseAlignment &compare) const;
-	inline bool operator<(const PhraseAlignment &compare) const
-	{ 
-		return Compare(compare) < 0;
-	}
+  int Compare(const PhraseAlignment &compare) const;
+  inline bool operator<(const PhraseAlignment &compare) const {
+    return Compare(compare) < 0;
+  }
 
   const PHRASE &GetSource() const {
     return phraseS;
@@ -53,10 +50,6 @@ public:
   const PHRASE &GetTarget() const {
     return phraseT;
   }
-  
-  const std::map<size_t, std::pair<size_t, size_t> > &GetNTLengths() const
-  { return m_ntLengths; }
-
 };
 
 class PhraseAlignment;
@@ -67,8 +60,7 @@ typedef std::vector<PhraseAlignment*>          PhraseAlignmentCollection;
 class PhraseAlignmentCollectionOrderer
 {
 public:
-	bool operator()(const PhraseAlignmentCollection &collA, const PhraseAlignmentCollection &collB) const
-	{
+  bool operator()(const PhraseAlignmentCollection &collA, const PhraseAlignmentCollection &collB) const {
     assert(collA.size() > 0);
     assert(collB.size() > 0);
 
@@ -77,7 +69,7 @@ public:
     bool ret = objA < objB;
 
     return ret;
-	}
+  }
 };
 
 
@@ -97,10 +89,12 @@ public:
 
   std::pair<Coll::iterator,bool> insert ( const PhraseAlignmentCollection& obj );
 
-  const SortedColl &GetSortedColl() const
-  { return m_sortedColl; }
-  size_t GetSize() const
-  { return m_coll.size(); }
+  const SortedColl &GetSortedColl() const {
+    return m_sortedColl;
+  }
+  size_t GetSize() const {
+    return m_coll.size();
+  }
 
 private:
   SortedColl m_sortedColl;

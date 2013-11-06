@@ -30,29 +30,39 @@ namespace Moses
 
 class TargetPhraseCollection;
 class WordsRange;
+class InputType;
+class InputPath;
 
 //! a vector of translations options for a specific range, in a specific sentence
-class ChartTranslationOptionList : public ChartParserCallback {
- public:
-  ChartTranslationOptionList(size_t);
+class ChartTranslationOptionList : public ChartParserCallback
+{
+public:
+  ChartTranslationOptionList(size_t ruleLimit, const InputType &input);
   ~ChartTranslationOptionList();
 
-  const ChartTranslationOptions &Get(size_t i) const { return *m_collection[i]; }
+  const ChartTranslationOptions &Get(size_t i) const {
+    return *m_collection[i];
+  }
 
   //! number of translation options
-  size_t GetSize() const { return m_size; }
+  size_t GetSize() const {
+    return m_size;
+  }
 
   void Add(const TargetPhraseCollection &, const StackVec &,
            const WordsRange &);
 
   void AddPhraseOOV(TargetPhrase &phrase, std::list<TargetPhraseCollection*> &waste_memory, const WordsRange &range);
 
-  bool Empty() const { return m_size == 0; }
+  bool Empty() const {
+    return m_size == 0;
+  }
 
   void Clear();
   void ApplyThreshold();
+  void Evaluate(const InputType &input, const InputPath &inputPath);
 
- private:
+private:
   typedef std::vector<ChartTranslationOptions*> CollType;
 
   struct ScoreThresholdPred {
@@ -67,6 +77,7 @@ class ChartTranslationOptionList : public ChartParserCallback {
   size_t m_size;
   float m_scoreThreshold;
   const size_t m_ruleLimit;
+
 };
 
 }

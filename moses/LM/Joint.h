@@ -49,7 +49,8 @@ protected:
 
   size_t m_implFactor;
 public:
-  LanguageModelJoint(LanguageModelSingleFactor *lmImpl) {
+  LanguageModelJoint(const std::string &line, LanguageModelSingleFactor *lmImpl)
+    :LanguageModelMultiFactor(line) {
     m_lmImpl = lmImpl;
   }
 
@@ -72,11 +73,11 @@ public:
     // sentence markers
     for (size_t index = 0 ; index < factorTypes.size() ; ++index) {
       FactorType factorType = factorTypes[index];
-      m_sentenceStartArray[factorType] 	= factorCollection.AddFactor(Output, factorType, BOS_);
-      m_sentenceEndArray[factorType] 		= factorCollection.AddFactor(Output, factorType, EOS_);
+      m_sentenceStartWord[factorType] 	= factorCollection.AddFactor(Output, factorType, BOS_);
+      m_sentenceEndWord[factorType] 		= factorCollection.AddFactor(Output, factorType, EOS_);
     }
 
-    return m_lmImpl->Load(filePath, m_implFactor, nGramOrder);
+    m_lmImpl->Load();
   }
 
   LMResult GetValueForgotState(const std::vector<const Word*> &contextFactor, FFState &outState) const {

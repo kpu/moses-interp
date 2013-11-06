@@ -8,12 +8,12 @@ All rights reserved.
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
 
-    * Redistributions of source code must retain the above copyright notice,
+ * Redistributions of source code must retain the above copyright notice,
 			this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright notice,
+ * Redistributions in binary form must reproduce the above copyright notice,
 			this list of conditions and the following disclaimer in the documentation
 			and/or other materials provided with the distribution.
-    * Neither the name of the University of Edinburgh nor the names of its contributors
+ * Neither the name of the University of Edinburgh nor the names of its contributors
 			may be used to endorse or promote products derived from this software
 			without specific prior written permission.
 
@@ -28,7 +28,7 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
 IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
-***********************************************************************/
+ ***********************************************************************/
 
 // example file on how to use moses library
 
@@ -42,9 +42,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "moses/WordsRange.h"
 #include "moses/TrellisPathList.h"
 #include "moses/StaticData.h"
-#include "moses/DummyScoreProducers.h"
 #include "moses/FeatureVector.h"
 #include "moses/InputFileStream.h"
+#include "moses/FF/StatefulFeatureFunction.h"
+#include "moses/FF/StatelessFeatureFunction.h"
+
 #include "IOWrapper.h"
 
 using namespace std;
@@ -148,7 +150,7 @@ void IOWrapper::Initialization(const std::vector<FactorType>	&/*inputFactorOrder
   }
 
 
-// search graph output
+  // search graph output
   if (staticData.GetOutputSearchGraph()) {
     string fileName;
     if (staticData.GetOutputSearchGraphExtended())
@@ -189,22 +191,66 @@ InputType*IOWrapper::GetInput(InputType* inputType)
   }
 }
 
+std::map<size_t, const Factor*> GetPlaceholders(const Hypothesis &hypo, FactorType placeholderFactor)
+{
+  const InputPath &inputPath = hypo.GetTranslationOption().GetInputPath();
+  const Phrase &inputPhrase = inputPath.GetPhrase();
+
+  std::map<size_t, const Factor*> ret;
+
+  for (size_t sourcePos = 0; sourcePos < inputPhrase.GetSize(); ++sourcePos) {
+    const Factor *factor = inputPhrase.GetFactor(sourcePos, placeholderFactor);
+    if (factor) {
+      std::set<size_t> targetPos = hypo.GetTranslationOption().GetTargetPhrase().GetAlignTerm().GetAlignmentsForSource(sourcePos);
+      CHECK(targetPos.size() == 1);
+      ret[*targetPos.begin()] = factor;
+    }
+  }
+
+  return ret;
+}
+
 /***
  * print surface factor only for the given phrase
  */
 void OutputSurface(std::ostream &out, const Hypothesis &edge, const std::vector<FactorType> &outputFactorOrder,
-		   bool reportSegmentation, bool reportAllFactors)
+                   char reportSegmentation, bool reportAllFactors)
 {
   CHECK(outputFactorOrder.size() > 0);
-  const Phrase& phrase = edge.GetCurrTargetPhrase();
+  const TargetPhrase& phrase = edge.GetCurrTargetPhrase();
+  bool markUnknown = StaticData::Instance().GetMarkUnknown();
   if (reportAllFactors == true) {
     out << phrase;
   } else {
+    FactorType placeholderFactor = StaticData::Instance().GetPlaceholderFactor();
+
+    std::map<size_t, const Factor*> placeholders;
+    if (placeholderFactor != NOT_FOUND) {
+      // creates map of target position -> factor for placeholders
+      placeholders = GetPlaceholders(edge, placeholderFactor);
+    }
+
     size_t size = phrase.GetSize();
     for (size_t pos = 0 ; pos < size ; pos++) {
       const Factor *factor = phrase.GetFactor(pos, outputFactorOrder[0]);
-      out << *factor;
+
+      if (placeholders.size()) {
+        // do placeholders
+        std::map<size_t, const Factor*>::const_iterator iter = placeholders.find(pos);
+        if (iter != placeholders.end()) {
+          factor = iter->second;
+        }
+      }
+
       CHECK(factor);
+
+      //preface surface form with UNK if marking unknowns
+      const Word &word = phrase.GetWord(pos);
+      if(markUnknown && word.IsOOV()) {
+        out << "UNK" << *factor;
+      } else {
+        out << *factor;
+      }
 
       for (size_t i = 1 ; i < outputFactorOrder.size() ; i++) {
         const Factor *factor = phrase.GetFactor(pos, outputFactorOrder[i]);
@@ -216,15 +262,29 @@ void OutputSurface(std::ostream &out, const Hypothesis &edge, const std::vector<
     }
   }
 
-  // trace option "-t"
-  if (reportSegmentation == true && phrase.GetSize() > 0) {
-    out << "|" << edge.GetCurrSourceWordsRange().GetStartPos()
-	<< "-" << edge.GetCurrSourceWordsRange().GetEndPos() << "| ";
+  // trace ("report segmentation") option "-t" / "-tt"
+  if (reportSegmentation > 0 && phrase.GetSize() > 0) {
+    const WordsRange &sourceRange = edge.GetCurrSourceWordsRange();
+    const int sourceStart = sourceRange.GetStartPos();
+    const int sourceEnd = sourceRange.GetEndPos();
+    out << "|" << sourceStart << "-" << sourceEnd;    // enriched "-tt"
+    if (reportSegmentation == 2) {
+      out << ",wa=";
+      const AlignmentInfo &ai = edge.GetCurrTargetPhrase().GetAlignTerm();
+      OutputAlignment(out, ai, 0, 0);
+      out << ",total=";
+      out << edge.GetScore() - edge.GetPrevHypo()->GetScore();
+      out << ",";
+      ScoreComponentCollection scoreBreakdown(edge.GetScoreBreakdown());
+      scoreBreakdown.MinusEquals(edge.GetPrevHypo()->GetScoreBreakdown());
+      OutputAllFeatureScores(scoreBreakdown, out);
+    }
+    out << "| ";
   }
 }
 
 void OutputBestSurface(std::ostream &out, const Hypothesis *hypo, const std::vector<FactorType> &outputFactorOrder,
-                   bool reportSegmentation, bool reportAllFactors)
+                       char reportSegmentation, bool reportAllFactors)
 {
   if (hypo != NULL) {
     // recursively retrace this best path through the lattice, starting from the end of the hypothesis sentence
@@ -237,13 +297,13 @@ void OutputAlignment(ostream &out, const AlignmentInfo &ai, size_t sourceOffset,
 {
   typedef std::vector< const std::pair<size_t,size_t>* > AlignVec;
   AlignVec alignments = ai.GetSortedAlignments();
-  
+
   AlignVec::const_iterator it;
   for (it = alignments.begin(); it != alignments.end(); ++it) {
     const std::pair<size_t,size_t> &alignment = **it;
     out << alignment.first + sourceOffset << "-" << alignment.second + targetOffset << " ";
   }
-  
+
 }
 
 void OutputAlignment(ostream &out, const vector<const Hypothesis *> &edges)
@@ -254,7 +314,7 @@ void OutputAlignment(ostream &out, const vector<const Hypothesis *> &edges)
     const Hypothesis &edge = *edges[currEdge];
     const TargetPhrase &tp = edge.GetCurrTargetPhrase();
     size_t sourceOffset = edge.GetCurrSourceWordsRange().GetStartPos();
-    
+
     OutputAlignment(out, tp.GetAlignTerm(), sourceOffset, targetOffset);
 
     targetOffset += tp.GetSize();
@@ -279,7 +339,7 @@ void OutputAlignment(OutputCollector* collector, size_t lineNo , const vector<co
 {
   ostringstream out;
   OutputAlignment(out, edges);
-  
+
   collector->Write(lineNo,out.str());
 }
 
@@ -304,7 +364,7 @@ void OutputAlignment(OutputCollector* collector, size_t lineNo , const TrellisPa
   }
 }
 
-void OutputBestHypo(const Moses::TrellisPath &path, long /*translationId*/, bool reportSegmentation, bool reportAllFactors, std::ostream &out)
+void OutputBestHypo(const Moses::TrellisPath &path, long /*translationId*/, char reportSegmentation, bool reportAllFactors, std::ostream &out)
 {
   const std::vector<const Hypothesis *> &edges = path.GetEdges();
 
@@ -324,7 +384,7 @@ void IOWrapper::Backtrack(const Hypothesis *hypo)
   }
 }
 
-void OutputBestHypo(const std::vector<Word>&  mbrBestHypo, long /*translationId*/, bool /*reportSegmentation*/, bool /*reportAllFactors*/, ostream& out)
+void OutputBestHypo(const std::vector<Word>&  mbrBestHypo, long /*translationId*/, char /*reportSegmentation*/, bool /*reportAllFactors*/, ostream& out)
 {
 
   for (size_t i = 0 ; i < mbrBestHypo.size() ; i++) {
@@ -341,7 +401,7 @@ void OutputInput(std::vector<const Phrase*>& map, const Hypothesis* hypo)
 {
   if (hypo->GetPrevHypo()) {
     OutputInput(map, hypo->GetPrevHypo());
-    map[hypo->GetCurrSourceWordsRange().GetStartPos()] = hypo->GetSourcePhrase();
+    map[hypo->GetCurrSourceWordsRange().GetStartPos()] = &hypo->GetTranslationOption().GetInputPath().GetPhrase();
   }
 }
 
@@ -354,7 +414,7 @@ void OutputInput(std::ostream& os, const Hypothesis* hypo)
     if (inp_phrases[i]) os << *inp_phrases[i];
 }
 
-void IOWrapper::OutputBestHypo(const Hypothesis *hypo, long /*translationId*/, bool reportSegmentation, bool reportAllFactors)
+void IOWrapper::OutputBestHypo(const Hypothesis *hypo, long /*translationId*/, char reportSegmentation, bool reportAllFactors)
 {
   if (hypo != NULL) {
     VERBOSE(1,"BEST TRANSLATION: " << *hypo << endl);
@@ -362,6 +422,10 @@ void IOWrapper::OutputBestHypo(const Hypothesis *hypo, long /*translationId*/, b
     Backtrack(hypo);
     VERBOSE(3,"0" << std::endl);
     if (!m_surpressSingleBestOutput) {
+      if (StaticData::Instance().GetOutputHypoScore()) {
+        cout << hypo->GetTotalScore() << " ";
+      }
+
       if (StaticData::Instance().IsPathRecoveryEnabled()) {
         OutputInput(cout, hypo);
         cout << "||| ";
@@ -377,10 +441,13 @@ void IOWrapper::OutputBestHypo(const Hypothesis *hypo, long /*translationId*/, b
   }
 }
 
-void OutputNBest(std::ostream& out, const Moses::TrellisPathList &nBestList, const std::vector<Moses::FactorType>& outputFactorOrder, const TranslationSystem* system, long translationId, bool reportSegmentation)
+void OutputNBest(std::ostream& out
+                 , const Moses::TrellisPathList &nBestList
+                 , const std::vector<Moses::FactorType>& outputFactorOrder
+                 , long translationId
+                 , char reportSegmentation)
 {
   const StaticData &staticData = StaticData::Instance();
-  bool labeledOutput = staticData.IsLabeledNBestList();
   bool reportAllFactors = staticData.GetReportAllFactorsNBest();
   bool includeSegmentation = staticData.NBestIncludesSegmentation();
   bool includeWordAlignment = staticData.PrintAlignmentInfoInNbest();
@@ -399,48 +466,7 @@ void OutputNBest(std::ostream& out, const Moses::TrellisPathList &nBestList, con
     out << " |||";
 
     // print scores with feature names
-    OutputAllFeatureScores( out, system, path );
-    string lastName;
-
-    // translation components
-    const vector<PhraseDictionaryFeature*>& pds = system->GetPhraseDictionaries();
-    if (pds.size() > 0) {
-
-      for( size_t i=0; i<pds.size(); i++ ) {
-	size_t pd_numinputscore = pds[i]->GetNumInputScores();
-	vector<float> scores = path.GetScoreBreakdown().GetScoresForProducer( pds[i] );
-	for (size_t j = 0; j<scores.size(); ++j){
-
-	  if (labeledOutput && (i == 0) ){
-	    if ((j == 0) || (j == pd_numinputscore)){
-	      lastName =  pds[i]->GetScoreProducerWeightShortName(j);
-	      out << " " << lastName << ":";
-	    }
-	  }
-	  out << " " << scores[j];
-	}
-      }
-    }
-
-    // generation
-    const vector<GenerationDictionary*>& gds = system->GetGenerationDictionaries();
-    if (gds.size() > 0) {
-
-      for( size_t i=0; i<gds.size(); i++ ) {
-	size_t pd_numinputscore = gds[i]->GetNumInputScores();
-	vector<float> scores = path.GetScoreBreakdown().GetScoresForProducer( gds[i] );
-	for (size_t j = 0; j<scores.size(); ++j){
-
-	  if (labeledOutput && (i == 0) ){
-	    if ((j == 0) || (j == pd_numinputscore)){
-	      lastName =  gds[i]->GetScoreProducerWeightShortName(j);
-	      out << " " << lastName << ":";
-	    }
-	  }
-	  out << " " << scores[j];
-	}
-      }
-    }
+    OutputAllFeatureScores(path.GetScoreBreakdown(), out );
 
     // total
     out << " ||| " << path.GetTotalScore();
@@ -472,14 +498,14 @@ void OutputNBest(std::ostream& out, const Moses::TrellisPathList &nBestList, con
         const int sourceOffset = sourceRange.GetStartPos();
         const int targetOffset = targetRange.GetStartPos();
         const AlignmentInfo &ai = edge.GetCurrTargetPhrase().GetAlignTerm();
-        
+
         OutputAlignment(out, ai, sourceOffset, targetOffset);
 
       }
     }
 
     if (StaticData::Instance().IsPathRecoveryEnabled()) {
-      out << "|||";
+      out << " ||| ";
       OutputInput(out, edges[0]);
     }
 
@@ -489,62 +515,51 @@ void OutputNBest(std::ostream& out, const Moses::TrellisPathList &nBestList, con
   out << std::flush;
 }
 
-void OutputAllFeatureScores( std::ostream& out, const TranslationSystem* system, const TrellisPath &path )
+void OutputAllFeatureScores(const Moses::ScoreComponentCollection &features
+                            , std::ostream &out)
 {
   std::string lastName = "";
-  const vector<const StatefulFeatureFunction*>& sff = system->GetStatefulFeatureFunctions();
-  for( size_t i=0; i<sff.size(); i++ )
-  	if (sff[i]->GetScoreProducerWeightShortName() != "bl")
-      OutputFeatureScores( out, path, sff[i], lastName );
-
-  const vector<const StatelessFeatureFunction*>& slf = system->GetStatelessFeatureFunctions();
-  for( size_t i=0; i<slf.size(); i++ )
-    if (slf[i]->GetScoreProducerWeightShortName() != "u" &&
-          slf[i]->GetScoreProducerWeightShortName() != "tm" &&
-          slf[i]->GetScoreProducerWeightShortName() != "I" &&
-          slf[i]->GetScoreProducerWeightShortName() != "g")
-      OutputFeatureScores( out, path, slf[i], lastName );
+  const vector<const StatefulFeatureFunction*>& sff = StatefulFeatureFunction::GetStatefulFeatureFunctions();
+  for( size_t i=0; i<sff.size(); i++ ) {
+    const StatefulFeatureFunction *ff = sff[i];
+    if (ff->GetScoreProducerDescription() != "BleuScoreFeature"
+        && ff->IsTuneable()) {
+      OutputFeatureScores( out, features, ff, lastName );
+    }
+  }
+  const vector<const StatelessFeatureFunction*>& slf = StatelessFeatureFunction::GetStatelessFeatureFunctions();
+  for( size_t i=0; i<slf.size(); i++ ) {
+    const StatelessFeatureFunction *ff = slf[i];
+    if (ff->IsTuneable()) {
+      OutputFeatureScores( out, features, ff, lastName );
+    }
+  }
 }
 
-void OutputFeatureScores( std::ostream& out, const TrellisPath &path, const FeatureFunction *ff, std::string &lastName )
+void OutputFeatureScores( std::ostream& out
+                          , const ScoreComponentCollection &features
+                          , const FeatureFunction *ff
+                          , std::string &lastName )
 {
   const StaticData &staticData = StaticData::Instance();
   bool labeledOutput = staticData.IsLabeledNBestList();
 
   // regular features (not sparse)
-  if (ff->GetNumScoreComponents() != ScoreProducer::unlimited) {
-    if( labeledOutput && lastName != ff->GetScoreProducerWeightShortName() ) {
-      lastName = ff->GetScoreProducerWeightShortName();
-      out << " " << lastName << ":";
+  if (ff->GetNumScoreComponents() != 0) {
+    if( labeledOutput && lastName != ff->GetScoreProducerDescription() ) {
+      lastName = ff->GetScoreProducerDescription();
+      out << " " << lastName << "=";
     }
-    vector<float> scores = path.GetScoreBreakdown().GetScoresForProducer( ff );
+    vector<float> scores = features.GetScoresForProducer( ff );
     for (size_t j = 0; j<scores.size(); ++j) {
       out << " " << scores[j];
     }
   }
 
   // sparse features
-  else {
-    const FVector scores = path.GetScoreBreakdown().GetVectorForProducer( ff );
-
-    // report weighted aggregate
-    if (! ff->GetSparseFeatureReporting()) {
-      const FVector &weights = staticData.GetAllWeights().GetScoresVector();
-      if (labeledOutput && !boost::contains(ff->GetScoreProducerDescription(), ":"))
-        out << " " << ff->GetScoreProducerWeightShortName() << ":";
-      out << " " << scores.inner_product(weights);
-    }
-
-    // report each feature
-    else {
-      for(FVector::FNVmap::const_iterator i = scores.cbegin(); i != scores.cend(); i++) 
-	out << " " << i->first << ": " << i->second;
-	/*        if (i->second != 0) { // do not report zero-valued features
-	  float weight = staticData.GetSparseWeight(i->first);
-          if (weight != 0)
-	  out << " " << i->first << "=" << weight;
-	  }*/
-    }
+  const FVector scores = features.GetVectorForProducer( ff );
+  for(FVector::FNVmap::const_iterator i = scores.cbegin(); i != scores.cend(); i++) {
+    out << " " << i->first << "= " << i->second;
   }
 }
 

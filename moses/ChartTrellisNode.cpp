@@ -29,16 +29,16 @@ namespace Moses
 {
 
 ChartTrellisNode::ChartTrellisNode(const ChartHypothesis &hypo)
-    : m_hypo(hypo)
+  : m_hypo(hypo)
 {
   CreateChildren();
 }
 
 ChartTrellisNode::ChartTrellisNode(const ChartTrellisDetour &detour,
                                    ChartTrellisNode *&deviationPoint)
-    : m_hypo((&detour.GetBasePath().GetFinalNode() == &detour.GetSubstitutedNode())
-             ? detour.GetReplacementHypo()
-             : detour.GetBasePath().GetFinalNode().GetHypothesis())
+  : m_hypo((&detour.GetBasePath().GetFinalNode() == &detour.GetSubstitutedNode())
+           ? detour.GetReplacementHypo()
+           : detour.GetBasePath().GetFinalNode().GetHypothesis())
 {
   if (&m_hypo == &detour.GetReplacementHypo()) {
     deviationPoint = this;
@@ -54,9 +54,9 @@ ChartTrellisNode::ChartTrellisNode(const ChartTrellisNode &root,
                                    const ChartTrellisNode &substitutedNode,
                                    const ChartHypothesis &replacementHypo,
                                    ChartTrellisNode *&deviationPoint)
-    : m_hypo((&root == &substitutedNode)
-             ? replacementHypo
-             : root.GetHypothesis())
+  : m_hypo((&root == &substitutedNode)
+           ? replacementHypo
+           : root.GetHypothesis())
 {
   if (&root == &substitutedNode) {
     deviationPoint = this;
@@ -73,6 +73,8 @@ ChartTrellisNode::~ChartTrellisNode()
 
 Phrase ChartTrellisNode::GetOutputPhrase() const
 {
+  FactorType placeholderFactor = StaticData::Instance().GetPlaceholderFactor();
+
   // exactly like same fn in hypothesis, but use trellis nodes instead of prevHypos pointer
   Phrase ret(ARRAY_SIZE_INCR);
 
@@ -89,6 +91,22 @@ Phrase ChartTrellisNode::GetOutputPhrase() const
       ret.Append(childPhrase);
     } else {
       ret.AddWord(word);
+
+      if (placeholderFactor != NOT_FOUND) {
+        std::set<size_t> sourcePosSet = m_hypo.GetCurrTargetPhrase().GetAlignTerm().GetAlignmentsForTarget(pos);
+        if (sourcePosSet.size() == 1) {
+          const std::vector<const Word*> *ruleSourceFromInputPath = m_hypo.GetTranslationOption().GetSourceRuleFromInputPath();
+          CHECK(ruleSourceFromInputPath);
+
+          size_t sourcePos = *sourcePosSet.begin();
+          const Word *sourceWord = ruleSourceFromInputPath->at(sourcePos);
+          CHECK(sourceWord);
+          const Factor *factor = sourceWord->GetFactor(placeholderFactor);
+          if (factor) {
+            ret.Back()[0] = factor;
+          }
+        }
+      }
     }
   }
 
@@ -118,8 +136,8 @@ void ChartTrellisNode::CreateChildren(const ChartTrellisNode &rootNode,
   for (size_t ind = 0; ind < children.size(); ++ind) {
     const ChartTrellisNode *origChild = children[ind];
     ChartTrellisNode *child = new ChartTrellisNode(*origChild, substitutedNode,
-                                                   replacementHypo,
-                                                   deviationPoint);
+        replacementHypo,
+        deviationPoint);
     m_children.push_back(child);
   }
 }

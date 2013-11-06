@@ -33,12 +33,12 @@ POSSIBILITY OF SUCH DAMAGE.
 // example file on how to use moses library
 
 #include <iostream>
+#include <boost/algorithm/string.hpp>
 #include "IOWrapper.h"
 #include "moses/TypeDef.h"
 #include "moses/Util.h"
 #include "moses/WordsRange.h"
 #include "moses/StaticData.h"
-#include "moses/DummyScoreProducers.h"
 #include "moses/InputFileStream.h"
 #include "moses/Incremental.h"
 #include "moses/TranslationModel/PhraseDictionary.h"
@@ -48,9 +48,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "moses/ChartTranslationOptions.h"
 #include "moses/ChartHypothesis.h"
 #include "moses/FeatureVector.h"
-
-#include <boost/algorithm/string.hpp>
-
+#include "moses/FF/StatefulFeatureFunction.h"
+#include "moses/FF/StatelessFeatureFunction.h"
 
 using namespace std;
 using namespace Moses;
@@ -69,9 +68,11 @@ IOWrapper::IOWrapper(const std::vector<FactorType>	&inputFactorOrder
   ,m_inputFactorUsed(inputFactorUsed)
   ,m_outputSearchGraphStream(NULL)
   ,m_detailedTranslationReportingStream(NULL)
+  ,m_detailedTreeFragmentsTranslationReportingStream(NULL)
   ,m_alignmentInfoStream(NULL)
   ,m_inputFilePath(inputFilePath)
   ,m_detailOutputCollector(NULL)
+  ,m_detailTreeFragmentsOutputCollector(NULL)
   ,m_nBestOutputCollector(NULL)
   ,m_searchGraphOutputCollector(NULL)
   ,m_singleBestOutputCollector(NULL)
@@ -117,6 +118,12 @@ IOWrapper::IOWrapper(const std::vector<FactorType>	&inputFactorOrder
     m_detailOutputCollector = new Moses::OutputCollector(m_detailedTranslationReportingStream);
   }
 
+  if (staticData.IsDetailedTreeFragmentsTranslationReportingEnabled()) {
+    const std::string &path = staticData.GetDetailedTreeFragmentsTranslationReportingFilePath();
+    m_detailedTreeFragmentsTranslationReportingStream = new std::ofstream(path.c_str());
+    m_detailTreeFragmentsOutputCollector = new Moses::OutputCollector(m_detailedTreeFragmentsTranslationReportingStream);
+  }
+
   if (!staticData.GetAlignmentOutputFile().empty()) {
     m_alignmentInfoStream = new std::ofstream(staticData.GetAlignmentOutputFile().c_str());
     m_alignmentInfoCollector = new Moses::OutputCollector(m_alignmentInfoStream);
@@ -131,6 +138,7 @@ IOWrapper::~IOWrapper()
   }
   delete m_outputSearchGraphStream;
   delete m_detailedTranslationReportingStream;
+  delete m_detailedTreeFragmentsTranslationReportingStream;
   delete m_alignmentInfoStream;
   delete m_detailOutputCollector;
   delete m_nBestOutputCollector;
@@ -139,7 +147,8 @@ IOWrapper::~IOWrapper()
   delete m_alignmentInfoCollector;
 }
 
-void IOWrapper::ResetTranslationId() {
+void IOWrapper::ResetTranslationId()
+{
   m_translationId = StaticData::Instance().GetStartTranslationId();
 }
 
@@ -175,7 +184,7 @@ void OutputSurface(std::ostream &out, const Phrase &phrase, const std::vector<Fa
 
       for (size_t i = 1 ; i < outputFactorOrder.size() ; i++) {
         const Factor *factor = phrase.GetFactor(pos, outputFactorOrder[i]);
-	CHECK(factor);
+        CHECK(factor);
 
         out << "|" << *factor;
       }
@@ -246,8 +255,8 @@ void OutputInput(std::ostream& os, const ChartHypothesis* hypo)
 // Given a hypothesis and sentence, reconstructs the 'application context' --
 // the source RHS symbols of the SCFG rule that was applied, plus their spans.
 void IOWrapper::ReconstructApplicationContext(const ChartHypothesis &hypo,
-                                   const Sentence &sentence,
-                                   ApplicationContext &context)
+    const Sentence &sentence,
+    ApplicationContext &context)
 {
   context.clear();
   const std::vector<const ChartHypothesis*> &prevHypos = hypo.GetPrevHypos();
@@ -277,7 +286,7 @@ void IOWrapper::ReconstructApplicationContext(const ChartHypothesis &hypo,
 // but there are scripts and tools that expect the output of -T to look like
 // that.
 void IOWrapper::WriteApplicationContext(std::ostream &out,
-                             const ApplicationContext &context)
+                                        const ApplicationContext &context)
 {
   assert(!context.empty());
   ApplicationContext::const_reverse_iterator p = context.rbegin();
@@ -290,26 +299,60 @@ void IOWrapper::WriteApplicationContext(std::ostream &out,
   }
 }
 
+void IOWrapper::OutputTranslationOption(std::ostream &out, ApplicationContext &applicationContext, const ChartHypothesis *hypo, const Sentence &sentence, long translationId)
+{
+  ReconstructApplicationContext(*hypo, sentence, applicationContext);
+  out << "Trans Opt " << translationId
+      << " " << hypo->GetCurrSourceRange()
+      << ": ";
+  WriteApplicationContext(out, applicationContext);
+  out << ": " << hypo->GetCurrTargetPhrase().GetTargetLHS()
+      << "->" << hypo->GetCurrTargetPhrase()
+      << " " << hypo->GetTotalScore() << hypo->GetScoreBreakdown();
+}
+
 void IOWrapper::OutputTranslationOptions(std::ostream &out, ApplicationContext &applicationContext, const ChartHypothesis *hypo, const Sentence &sentence, long translationId)
 {
-  // recursive
   if (hypo != NULL) {
-    ReconstructApplicationContext(*hypo, sentence, applicationContext);
-    out << "Trans Opt " << translationId
-        << " " << hypo->GetCurrSourceRange()
-        << ": ";
-    WriteApplicationContext(out, applicationContext);
-    out << ": " << hypo->GetCurrTargetPhrase().GetTargetLHS()
-        << "->" << hypo->GetCurrTargetPhrase()
-        << " " << hypo->GetTotalScore() << hypo->GetScoreBreakdown()
-        << endl;
+    OutputTranslationOption(out, applicationContext, hypo, sentence, translationId);
+    out << std::endl;
   }
 
+  // recursive
   const std::vector<const ChartHypothesis*> &prevHypos = hypo->GetPrevHypos();
   std::vector<const ChartHypothesis*>::const_iterator iter;
   for (iter = prevHypos.begin(); iter != prevHypos.end(); ++iter) {
     const ChartHypothesis *prevHypo = *iter;
     OutputTranslationOptions(out, applicationContext, prevHypo, sentence, translationId);
+  }
+}
+
+void IOWrapper::OutputTreeFragmentsTranslationOptions(std::ostream &out, ApplicationContext &applicationContext, const ChartHypothesis *hypo, const Sentence &sentence, long translationId)
+{
+
+  if (hypo != NULL) {
+    OutputTranslationOption(out, applicationContext, hypo, sentence, translationId);
+
+    const std::string key = "Tree";
+    std::string value;
+    bool hasProperty;
+    const TargetPhrase &currTarPhr = hypo->GetCurrTargetPhrase();
+    currTarPhr.GetProperty(key, value, hasProperty);
+
+    out << " ||| ";
+    if (hasProperty)
+      out << " " << value;
+    else
+      out << " " << "noTreeInfo";
+    out << std::endl;
+  }
+
+  // recursive
+  const std::vector<const ChartHypothesis*> &prevHypos = hypo->GetPrevHypos();
+  std::vector<const ChartHypothesis*>::const_iterator iter;
+  for (iter = prevHypos.begin(); iter != prevHypos.end(); ++iter) {
+    const ChartHypothesis *prevHypo = *iter;
+    OutputTreeFragmentsTranslationOptions(out, applicationContext, prevHypo, sentence, translationId);
   }
 }
 
@@ -328,7 +371,55 @@ void IOWrapper::OutputDetailedTranslationReport(
   CHECK(m_detailOutputCollector);
   m_detailOutputCollector->Write(translationId, out.str());
 }
-  
+
+void IOWrapper::OutputDetailedTreeFragmentsTranslationReport(
+  const ChartHypothesis *hypo,
+  const Sentence &sentence,
+  long translationId)
+{
+  if (hypo == NULL) {
+    return;
+  }
+  std::ostringstream out;
+  ApplicationContext applicationContext;
+
+  OutputTreeFragmentsTranslationOptions(out, applicationContext, hypo, sentence, translationId);
+  CHECK(m_detailTreeFragmentsOutputCollector);
+  m_detailTreeFragmentsOutputCollector->Write(translationId, out.str());
+}
+
+//DIMw
+void IOWrapper::OutputDetailedAllTranslationReport(
+  const ChartTrellisPathList &nBestList,
+  const ChartManager &manager,
+  const Sentence &sentence,
+  long translationId)
+{
+  std::ostringstream out;
+  ApplicationContext applicationContext;
+
+  const ChartCellCollection& cells = manager.GetChartCellCollection();
+  size_t size = manager.GetSource().GetSize();
+  for (size_t width = 1; width <= size; ++width) {
+    for (size_t startPos = 0; startPos <= size-width; ++startPos) {
+      size_t endPos = startPos + width - 1;
+      WordsRange range(startPos, endPos);
+      const ChartCell& cell = cells.Get(range);
+      const HypoList* hyps = cell.GetAllSortedHypotheses();
+      out << "Chart Cell [" << startPos << ".." << endPos << "]" << endl;
+      HypoList::const_iterator iter;
+      size_t c = 1;
+      for (iter = hyps->begin(); iter != hyps->end(); ++iter) {
+        out << "----------------Item " << c++ << " ---------------------"
+            << endl;
+        OutputTranslationOptions(out, applicationContext, *iter,
+                                 sentence, translationId);
+      }
+    }
+  }
+  CHECK(m_detailAllOutputCollector);
+  m_detailAllOutputCollector->Write(translationId, out.str());
+}
 
 void IOWrapper::OutputBestHypo(const ChartHypothesis *hypo, long translationId)
 {
@@ -345,18 +436,18 @@ void IOWrapper::OutputBestHypo(const ChartHypothesis *hypo, long translationId)
     if (StaticData::Instance().GetOutputHypoScore()) {
       out << hypo->GetTotalScore() << " ";
     }
-    
+
     if (StaticData::Instance().IsPathRecoveryEnabled()) {
       out << "||| ";
     }
     Phrase outPhrase(ARRAY_SIZE_INCR);
-    hypo->CreateOutputPhrase(outPhrase);
-    
+    hypo->GetOutputPhrase(outPhrase);
+
     // delete 1st & last
     CHECK(outPhrase.GetSize() >= 2);
     outPhrase.RemoveWord(0);
     outPhrase.RemoveWord(outPhrase.GetSize() - 1);
-    
+
     const std::vector<FactorType> outputFactorOrder = StaticData::Instance().GetOutputFactorOrder();
     string output = outPhrase.GetStringRep(outputFactorOrder);
     out << output << endl;
@@ -372,7 +463,8 @@ void IOWrapper::OutputBestHypo(const ChartHypothesis *hypo, long translationId)
   m_singleBestOutputCollector->Write(translationId, out.str());
 }
 
-void IOWrapper::OutputBestHypo(search::Applied applied, long translationId) {
+void IOWrapper::OutputBestHypo(search::Applied applied, long translationId)
+{
   if (!m_singleBestOutputCollector) return;
   std::ostringstream out;
   IOWrapper::FixPrecision(out);
@@ -388,9 +480,12 @@ void IOWrapper::OutputBestHypo(search::Applied applied, long translationId) {
   out << outPhrase.GetStringRep(StaticData::Instance().GetOutputFactorOrder());
   out << '\n';
   m_singleBestOutputCollector->Write(translationId, out.str());
+
+  VERBOSE(1,"BEST TRANSLATION: " << outPhrase << "[total=" << applied.GetScore() << "]" << endl);
 }
 
-void IOWrapper::OutputBestNone(long translationId) {
+void IOWrapper::OutputBestNone(long translationId)
+{
   if (!m_singleBestOutputCollector) return;
   if (StaticData::Instance().GetOutputHypoScore()) {
     m_singleBestOutputCollector->Write(translationId, "0 \n");
@@ -399,109 +494,52 @@ void IOWrapper::OutputBestNone(long translationId) {
   }
 }
 
-namespace {
+void IOWrapper::OutputAllFeatureScores(const ScoreComponentCollection &features, std::ostream &out)
+{
+  std::string lastName = "";
+  const vector<const StatefulFeatureFunction*>& sff = StatefulFeatureFunction::GetStatefulFeatureFunctions();
+  for( size_t i=0; i<sff.size(); i++ ) {
+    const StatefulFeatureFunction *ff = sff[i];
+    if (ff->GetScoreProducerDescription() != "BleuScoreFeature"
+        && ff->IsTuneable()) {
+      OutputFeatureScores( out, features, ff, lastName );
+    }
+  }
+  const vector<const StatelessFeatureFunction*>& slf = StatelessFeatureFunction::GetStatelessFeatureFunctions();
+  for( size_t i=0; i<slf.size(); i++ ) {
+    const StatelessFeatureFunction *ff = slf[i];
+    if (ff->IsTuneable()) {
+      OutputFeatureScores( out, features, ff, lastName );
+    }
+  }
+} // namespace
 
-void OutputSparseFeatureScores(std::ostream& out, const ScoreComponentCollection &features, const FeatureFunction *ff, std::string &lastName) {
+void IOWrapper::OutputFeatureScores( std::ostream& out, const ScoreComponentCollection &features, const FeatureFunction *ff, std::string &lastName )
+{
   const StaticData &staticData = StaticData::Instance();
   bool labeledOutput = staticData.IsLabeledNBestList();
-  const FVector scores = features.GetVectorForProducer( ff );
 
-  // report weighted aggregate
-  if (! ff->GetSparseFeatureReporting()) {
-  	const FVector &weights = staticData.GetAllWeights().GetScoresVector();
-  	if (labeledOutput && !boost::contains(ff->GetScoreProducerDescription(), ":"))
-  		out << " " << ff->GetScoreProducerWeightShortName() << ":";
-    out << " " << scores.inner_product(weights);
+  // regular features (not sparse)
+  if (ff->GetNumScoreComponents() != 0) {
+    if( labeledOutput && lastName != ff->GetScoreProducerDescription() ) {
+      lastName = ff->GetScoreProducerDescription();
+      out << " " << lastName << "=";
+    }
+    vector<float> scores = features.GetScoresForProducer( ff );
+    for (size_t j = 0; j<scores.size(); ++j) {
+      out << " " << scores[j];
+    }
   }
 
-  // report each feature
-  else {
-  	for(FVector::FNVmap::const_iterator i = scores.cbegin(); i != scores.cend(); i++) {
-  		if (i->second != 0) { // do not report zero-valued features
-  			if (labeledOutput)
-  				out << " " << i->first << ":";
-        out << " " << i->second;
-      }
-    }
+  // sparse features
+  const FVector scores = features.GetVectorForProducer( ff );
+  for(FVector::FNVmap::const_iterator i = scores.cbegin(); i != scores.cend(); i++) {
+    out << " " << i->first << "= " << i->second;
   }
 }
 
-void WriteFeatures(const TranslationSystem &system, const ScoreComponentCollection &features, std::ostream &out) {
-  bool labeledOutput = StaticData::Instance().IsLabeledNBestList();
-  // lm
-  const LMList& lml = system.GetLanguageModels();
-  if (lml.size() > 0) {
-    if (labeledOutput)
-      out << "lm:";
-    LMList::const_iterator lmi = lml.begin();
-    for (; lmi != lml.end(); ++lmi) {
-      out << " " << features.GetScoreForProducer(*lmi);
-    }
-  }
-
-  std::string lastName = "";
-
-  // output stateful sparse features
-  const vector<const StatefulFeatureFunction*>& sff = system.GetStatefulFeatureFunctions();
-  for( size_t i=0; i<sff.size(); i++ )
-    if (sff[i]->GetNumScoreComponents() == ScoreProducer::unlimited)
-      OutputSparseFeatureScores(out, features, sff[i], lastName);
-
-  // translation components
-  const vector<PhraseDictionaryFeature*>& pds = system.GetPhraseDictionaries();
-  if (pds.size() > 0) {
-    for( size_t i=0; i<pds.size(); i++ ) {
-      size_t pd_numinputscore = pds[i]->GetNumInputScores();
-      vector<float> scores = features.GetScoresForProducer( pds[i] );
-      for (size_t j = 0; j<scores.size(); ++j){
-        if (labeledOutput && (i == 0) ){
-          if ((j == 0) || (j == pd_numinputscore)){
-            lastName =  pds[i]->GetScoreProducerWeightShortName(j);
-            out << " " << lastName << ":";
-          }
-        }
-        out << " " << scores[j];
-      }
-    }
-  }
-
-  // word penalty
-  if (labeledOutput)
-    out << " w:";
-  out << " " << features.GetScoreForProducer(system.GetWordPenaltyProducer());
-
-  // generation
-  const vector<GenerationDictionary*>& gds = system.GetGenerationDictionaries();
-  if (gds.size() > 0) {
-    for( size_t i=0; i<gds.size(); i++ ) {
-      size_t pd_numinputscore = gds[i]->GetNumInputScores();
-      vector<float> scores = features.GetScoresForProducer( gds[i] );
-      for (size_t j = 0; j<scores.size(); ++j){
-        if (labeledOutput && (i == 0) ){
-          if ((j == 0) || (j == pd_numinputscore)){
-            lastName =  gds[i]->GetScoreProducerWeightShortName(j);
-            out << " " << lastName << ":";
-          }
-        }
-        out << " " << scores[j];
-      }
-    }
-  }
-
-  // output stateless sparse features
-  lastName = "";
-
-  const vector<const StatelessFeatureFunction*>& slf = system.GetStatelessFeatureFunctions();
-  for( size_t i=0; i<slf.size(); i++ ) {
-    if (slf[i]->GetNumScoreComponents() == ScoreProducer::unlimited) {
-      OutputSparseFeatureScores(out, features, slf[i], lastName);
-    }
-  }
-} 
-
-} // namespace
-
-void IOWrapper::OutputNBestList(const ChartTrellisPathList &nBestList, const TranslationSystem* system, long translationId) {
+void IOWrapper::OutputNBestList(const ChartTrellisPathList &nBestList, long translationId)
+{
   std::ostringstream out;
 
   // Check if we're writing to std::cout.
@@ -510,7 +548,7 @@ void IOWrapper::OutputNBestList(const ChartTrellisPathList &nBestList, const Tra
     // preserve existing behaviour, but should probably be done either way.
     IOWrapper::FixPrecision(out);
 
-    // Used to check StaticData's GetOutputHypoScore(), but it makes no sense with nbest output.  
+    // Used to check StaticData's GetOutputHypoScore(), but it makes no sense with nbest output.
   }
 
   //bool includeAlignment = StaticData::Instance().NBestIncludesAlignment();
@@ -537,7 +575,7 @@ void IOWrapper::OutputNBestList(const ChartTrellisPathList &nBestList, const Tra
     // before each model type, the corresponding command-line-like name must be emitted
     // MERT script relies on this
 
-    WriteFeatures(*system, path.GetScoreBreakdown(), out);
+    OutputAllFeatureScores(path.GetScoreBreakdown(), out);
 
     // total
     out << " ||| " << path.GetTotalScore();
@@ -586,7 +624,8 @@ void IOWrapper::OutputNBestList(const ChartTrellisPathList &nBestList, const Tra
   m_nBestOutputCollector->Write(translationId, out.str());
 }
 
-void IOWrapper::OutputNBestList(const std::vector<search::Applied> &nbest, const TranslationSystem &system, long translationId) {
+void IOWrapper::OutputNBestList(const std::vector<search::Applied> &nbest, long translationId)
+{
   std::ostringstream out;
   // wtf? copied from the original OutputNBestList
   if (m_nBestOutputCollector->OutputIsCout()) {
@@ -595,7 +634,7 @@ void IOWrapper::OutputNBestList(const std::vector<search::Applied> &nbest, const
   Phrase outputPhrase;
   ScoreComponentCollection features;
   for (std::vector<search::Applied>::const_iterator i = nbest.begin(); i != nbest.end(); ++i) {
-    Incremental::PhraseAndFeatures(system, *i, outputPhrase, features);
+    Incremental::PhraseAndFeatures(*i, outputPhrase, features);
     // <s> and </s>
     CHECK(outputPhrase.GetSize() >= 2);
     outputPhrase.RemoveWord(0);
@@ -603,7 +642,7 @@ void IOWrapper::OutputNBestList(const std::vector<search::Applied> &nbest, const
     out << translationId << " ||| ";
     OutputSurface(out, outputPhrase, m_outputFactorOrder, false);
     out << " ||| ";
-    WriteFeatures(system, features, out);
+    OutputAllFeatureScores(features, out);
     out << " ||| " << i->GetScore() << '\n';
   }
   out << std::flush;
@@ -623,12 +662,11 @@ void ShiftOffsets(vector<T> &offsets, T shift)
   T currPos = shift;
   for (size_t i = 0; i < offsets.size(); ++i) {
     if (offsets[i] == 0) {
-	  offsets[i] = currPos;
-	  ++currPos;
-	}
-	else {
-	  currPos += offsets[i];
-	}
+      offsets[i] = currPos;
+      ++currPos;
+    } else {
+      currPos += offsets[i];
+    }
   }
 }
 
@@ -688,8 +726,7 @@ size_t IOWrapper::OutputAlignmentNBest(Alignments &retAlign, const Moses::ChartT
 
       totalTargetSize += targetSize;
       ++targetInd;
-    }
-    else {
+    } else {
       ++totalTargetSize;
     }
   }
@@ -724,15 +761,15 @@ void IOWrapper::OutputAlignment(size_t translationId , const Moses::ChartHypothe
   ostringstream out;
 
   if (hypo) {
-	Alignments retAlign;
-	OutputAlignment(retAlign, hypo, 0);
+    Alignments retAlign;
+    OutputAlignment(retAlign, hypo, 0);
 
-	// output alignments
-	Alignments::const_iterator iter;
-	for (iter = retAlign.begin(); iter != retAlign.end(); ++iter) {
-	  const pair<size_t, size_t> &alignPoint = *iter;
-	  out << alignPoint.first << "-" << alignPoint.second << " ";
-	}
+    // output alignments
+    Alignments::const_iterator iter;
+    for (iter = retAlign.begin(); iter != retAlign.end(); ++iter) {
+      const pair<size_t, size_t> &alignPoint = *iter;
+      out << alignPoint.first << "-" << alignPoint.second << " ";
+    }
   }
   out << endl;
 
@@ -782,8 +819,7 @@ size_t IOWrapper::OutputAlignment(Alignments &retAlign, const Moses::ChartHypoth
 
       totalTargetSize += targetSize;
       ++targetInd;
-    }
-    else {
+    } else {
       ++totalTargetSize;
     }
   }

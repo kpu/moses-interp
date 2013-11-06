@@ -1,17 +1,17 @@
 /***********************************************************************
  Moses - statistical machine translation system
  Copyright (C) 2006-2012 University of Edinburgh
- 
+
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
  License as published by the Free Software Foundation; either
  version 2.1 of the License, or (at your option) any later version.
- 
+
  This library is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
- 
+
  You should have received a copy of the GNU Lesser General Public
  License along with this library; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
@@ -19,6 +19,7 @@
 
 #include "Parser.h"
 
+#include "moses/ChartParser.h"
 #include "moses/ChartTranslationOptionList.h"
 #include "moses/InputType.h"
 #include "moses/NonTerminal.h"
@@ -38,8 +39,8 @@ namespace Moses
 {
 
 void Scope3Parser::GetChartRuleCollection(
-    const WordsRange &range,
-    ChartParserCallback &outColl)
+  const WordsRange &range,
+  ChartParserCallback &outColl)
 {
   const size_t start = range.GetStartPos();
   const size_t end = range.GetEndPos();
@@ -90,11 +91,9 @@ void Scope3Parser::Init()
 {
   InitRuleApplicationVector();
 
-  const Sentence &sentence = dynamic_cast<const Sentence &>(GetSentence());
-
   // Build a map from Words to index-sets.
   SentenceMap sentMap;
-  FillSentenceMap(sentence, sentMap);
+  FillSentenceMap(sentMap);
 
   // Build a trie containing 'elastic' application contexts
   const UTrieNode &rootNode = m_ruleTable.GetRootNode();
@@ -108,12 +107,12 @@ void Scope3Parser::Init()
   m_varSpanTrie = vstBuilder.Build(*art);
 
   // Fill each cell with a list of pointers to relevant ART nodes.
-  AddRulesToCells(*art, std::make_pair<int, int>(-1, -1), sentence.GetSize()-1, 0);
+  AddRulesToCells(*art, std::make_pair<int, int>(-1, -1), GetParser().GetSize()-1, 0);
 }
 
 void Scope3Parser::InitRuleApplicationVector()
 {
-  const size_t sourceSize = GetSentence().GetSize();
+  const size_t sourceSize = GetParser().GetSize();
   m_ruleApplications.resize(sourceSize);
   for (size_t start = 0; start < sourceSize; ++start) {
     size_t maxSpan = sourceSize-start+1;
@@ -121,19 +120,19 @@ void Scope3Parser::InitRuleApplicationVector()
   }
 }
 
-void Scope3Parser::FillSentenceMap(
-    const Sentence &sent, SentenceMap &sentMap)
+void Scope3Parser::FillSentenceMap(SentenceMap &sentMap)
 {
-  for (size_t i = 0; i < sent.GetSize(); ++i) {
-    sentMap[sent.GetWord(i)].push_back(i);
+  for (size_t i = 0; i < GetParser().GetSize(); ++i) {
+    const Word &word = GetParser().GetInputPath(i, i).GetLastWord();
+    sentMap[word].push_back(i);
   }
 }
 
 void Scope3Parser::AddRulesToCells(
-    const ApplicableRuleTrie &node,
-    std::pair<int, int> start,
-    int maxPos,
-    int depth)
+  const ApplicableRuleTrie &node,
+  std::pair<int, int> start,
+  int maxPos,
+  int depth)
 {
   if (depth > 0) {
     // Determine the start range for this path if not already known.
@@ -183,7 +182,7 @@ void Scope3Parser::AddRulesToCells(
           break;
         }
         m_ruleApplications[i][span].push_back(std::make_pair(node.m_node,
-                                                             node.m_vstNode));
+                                              node.m_vstNode));
       }
     }
   }

@@ -56,9 +56,9 @@ struct SearchGraphNode {
     hypo(theHypo), recombinationHypo(theRecombinationHypo),
     forward(theForward), fscore(theFscore) {}
 
-    bool operator<(const SearchGraphNode& sgn) const {
-        return this->hypo->GetId() < sgn.hypo->GetId();
-    }
+  bool operator<(const SearchGraphNode& sgn) const {
+    return this->hypo->GetId() < sgn.hypo->GetId();
+  }
 
 };
 
@@ -73,7 +73,7 @@ struct SearchGraphNode {
  *   (and also the first mapping step in the factored model) is a phrase translation
  *   from the source to the target. Given a specific input sentence, only a limited
  *   number of phrase translation can be applied. For efficient lookup of the
- *   translation options later, these optuions are first collected in the function
+ *   translation options later, these options are first collected in the function
  *   CreateTranslationOption (for more information check the class
  *   TranslationOptionCollection)
  * - Create initial hypothesis: Hypothesis stack 0 contains only one empty hypothesis.
@@ -96,7 +96,6 @@ class Manager
   Manager();
   Manager(Manager const&);
   void operator=(Manager const&);
-  const TranslationSystem* m_system;
 private:
 
   // Helper functions to output search graph in HTK standard lattice format
@@ -132,12 +131,9 @@ protected:
 
 public:
   InputType const& m_source; /**< source sentence to be translated */
-  Manager(size_t lineNumber, InputType const& source, SearchAlgorithm searchAlgorithm, const TranslationSystem* system);
+  Manager(size_t lineNumber, InputType const& source, SearchAlgorithm searchAlgorithm);
   ~Manager();
   const  TranslationOptionCollection* getSntTranslationOptions();
-  const TranslationSystem* GetTranslationSystem() {
-    return m_system;
-  }
 
   void ProcessSentence();
   const Hypothesis *GetBestHypothesis() const;
@@ -147,6 +143,7 @@ public:
   void PrintAllDerivations(long translationId, std::ostream& outputStream) const;
   void printDivergentHypothesis(long translationId, const Hypothesis* hypo, const std::vector <const TargetPhrase*> & remainingPhrases, float remainingScore , std::ostream& outputStream) const;
   void printThisHypothesis(long translationId, const Hypothesis* hypo, const std::vector <const TargetPhrase* > & remainingPhrases, float remainingScore , std::ostream& outputStream) const;
+  void GetOutputLanguageModelOrder( std::ostream &out, const Hypothesis *hypo );
   void GetWordGraph(long translationId, std::ostream &outputWordGraphStream) const;
   int GetNextHypoId();
 #ifdef HAVE_PROTOBUF

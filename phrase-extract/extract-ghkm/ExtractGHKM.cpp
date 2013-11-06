@@ -1,17 +1,17 @@
 /***********************************************************************
  Moses - statistical machine translation system
  Copyright (C) 2006-2011 University of Edinburgh
- 
+
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
  License as published by the Free Software Foundation; either
  version 2.1 of the License, or (at your option) any later version.
- 
+
  This library is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
- 
+
  You should have received a copy of the GNU Lesser General Public
  License along with this library; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
@@ -43,8 +43,10 @@
 #include <sstream>
 #include <vector>
 
-namespace Moses {
-namespace GHKM {
+namespace Moses
+{
+namespace GHKM
+{
 
 int ExtractGHKM::Main(int argc, char *argv[])
 {
@@ -88,6 +90,7 @@ int ExtractGHKM::Main(int argc, char *argv[])
   std::string targetLine;
   std::string sourceLine;
   std::string alignmentLine;
+  Alignment alignment;
   XmlTreeParser xmlTreeParser(labelSet, topLabelSet);
   ScfgRuleWriter writer(fwdExtractStream, invExtractStream, options);
   size_t lineNum = options.sentenceOffset;
@@ -107,7 +110,7 @@ int ExtractGHKM::Main(int argc, char *argv[])
     ++lineNum;
 
     // Parse target tree.
-    if (targetLine.size() == 0) { 
+    if (targetLine.size() == 0) {
       std::cerr << "skipping line " << lineNum << " with empty target tree\n";
       continue;
     }
@@ -128,9 +131,8 @@ int ExtractGHKM::Main(int argc, char *argv[])
     std::vector<std::string> sourceTokens(ReadTokens(sourceLine));
 
     // Read word alignments.
-    Alignment alignment;
     try {
-      alignment = ReadAlignment(alignmentLine);
+      ReadAlignment(alignmentLine, alignment);
     } catch (const Exception &e) {
       std::ostringstream s;
       s << "Failed to read alignment at line " << lineNum << ": ";
@@ -169,7 +171,11 @@ int ExtractGHKM::Main(int argc, char *argv[])
         ScfgRule r(**q);
         // TODO Can scope pruning be done earlier?
         if (r.Scope() <= options.maxScope) {
-          writer.Write(r);
+          if (!options.treeFragments) {
+            writer.Write(r);
+          } else {
+            writer.Write(r,**q);
+          }
         }
       }
     }
@@ -263,64 +269,66 @@ void ExtractGHKM::ProcessOptions(int argc, char *argv[],
   // Declare the command line options that are visible to the user.
   po::options_description visible(usageTop.str());
   visible.add_options()
-    //("help", "print this help message and exit")
-    ("AllowUnary",
-        "allow fully non-lexical unary rules")
-    ("ConditionOnTargetLHS",
-        "write target LHS instead of \"X\" as source LHS")
-    ("GlueGrammar",
-        po::value(&options.glueGrammarFile),
-        "write glue grammar to named file")
-    ("GZOutput",
-        "write gzipped extract files")
-    ("MaxNodes",
-        po::value(&options.maxNodes)->default_value(options.maxNodes),
-        "set maximum number of tree nodes for composed rules")
-    ("MaxRuleDepth",
-        po::value(&options.maxRuleDepth)->default_value(options.maxRuleDepth),
-        "set maximum depth for composed rules")
-    ("MaxRuleSize",
-        po::value(&options.maxRuleSize)->default_value(options.maxRuleSize),
-        "set maximum size for composed rules")
-    ("MaxScope",
-        po::value(&options.maxScope)->default_value(options.maxScope),
-        "set maximum allowed scope")
-    ("Minimal",
-        "extract minimal rules only")
-    ("PCFG",
-        "include score based on PCFG scores in target corpus")
-    ("SentenceOffset",
-        po::value(&options.sentenceOffset)->default_value(options.sentenceOffset),
-        "set sentence number offset if processing split corpus")
-    ("UnknownWordLabel",
-        po::value(&options.unknownWordFile),
-        "write unknown word labels to named file")
-    ("UnknownWordMinRelFreq",
-        po::value(&options.unknownWordMinRelFreq)->default_value(
-          options.unknownWordMinRelFreq),
-        "set minimum relative frequency for unknown word labels")
-    ("UnknownWordUniform",
-        "write uniform weights to unknown word label file")
-    ("UnpairedExtractFormat",
-        "do not pair non-terminals in extract files")
+  //("help", "print this help message and exit")
+  ("AllowUnary",
+   "allow fully non-lexical unary rules")
+  ("ConditionOnTargetLHS",
+   "write target LHS instead of \"X\" as source LHS")
+  ("GlueGrammar",
+   po::value(&options.glueGrammarFile),
+   "write glue grammar to named file")
+  ("GZOutput",
+   "write gzipped extract files")
+  ("MaxNodes",
+   po::value(&options.maxNodes)->default_value(options.maxNodes),
+   "set maximum number of tree nodes for composed rules")
+  ("MaxRuleDepth",
+   po::value(&options.maxRuleDepth)->default_value(options.maxRuleDepth),
+   "set maximum depth for composed rules")
+  ("MaxRuleSize",
+   po::value(&options.maxRuleSize)->default_value(options.maxRuleSize),
+   "set maximum size for composed rules")
+  ("MaxScope",
+   po::value(&options.maxScope)->default_value(options.maxScope),
+   "set maximum allowed scope")
+  ("Minimal",
+   "extract minimal rules only")
+  ("PCFG",
+   "include score based on PCFG scores in target corpus")
+  ("TreeFragments",
+   "output parse tree information")
+  ("SentenceOffset",
+   po::value(&options.sentenceOffset)->default_value(options.sentenceOffset),
+   "set sentence number offset if processing split corpus")
+  ("UnknownWordLabel",
+   po::value(&options.unknownWordFile),
+   "write unknown word labels to named file")
+  ("UnknownWordMinRelFreq",
+   po::value(&options.unknownWordMinRelFreq)->default_value(
+     options.unknownWordMinRelFreq),
+   "set minimum relative frequency for unknown word labels")
+  ("UnknownWordUniform",
+   "write uniform weights to unknown word label file")
+  ("UnpairedExtractFormat",
+   "do not pair non-terminals in extract files")
   ;
 
   // Declare the command line options that are hidden from the user
   // (these are used as positional options).
   po::options_description hidden("Hidden options");
   hidden.add_options()
-    ("TargetFile",
-        po::value(&options.targetFile),
-        "target file")
-    ("SourceFile",
-        po::value(&options.sourceFile),
-        "source file")
-    ("AlignmentFile",
-        po::value(&options.alignmentFile),
-        "alignment file")
-    ("ExtractFile",
-        po::value(&options.extractFile),
-        "extract file")
+  ("TargetFile",
+   po::value(&options.targetFile),
+   "target file")
+  ("SourceFile",
+   po::value(&options.sourceFile),
+   "source file")
+  ("AlignmentFile",
+   po::value(&options.alignmentFile),
+   "alignment file")
+  ("ExtractFile",
+   po::value(&options.extractFile),
+   "extract file")
   ;
 
   // Compose the full set of command-line options.
@@ -337,8 +345,8 @@ void ExtractGHKM::ProcessOptions(int argc, char *argv[],
   // Process the command-line.
   po::variables_map vm;
   const int optionStyle = cls::allow_long
-                        | cls::long_allow_adjacent
-                        | cls::long_allow_next;
+                          | cls::long_allow_adjacent
+                          | cls::long_allow_next;
   try {
     po::store(po::command_line_parser(argc, argv).style(optionStyle).
               options(cmdLineOptions).positional(p).run(), vm);
@@ -380,11 +388,19 @@ void ExtractGHKM::ProcessOptions(int argc, char *argv[],
   if (vm.count("PCFG")) {
     options.pcfg = true;
   }
+  if (vm.count("TreeFragments")) {
+    options.treeFragments = true;
+  }
   if (vm.count("UnknownWordUniform")) {
     options.unknownWordUniform = true;
   }
   if (vm.count("UnpairedExtractFormat")) {
     options.unpairedExtractFormat = true;
+  }
+
+  // Workaround for extract-parallel issue.
+  if (options.sentenceOffset > 0) {
+    options.unknownWordFile.clear();
   }
 }
 
@@ -424,9 +440,9 @@ std::vector<std::string> ExtractGHKM::ReadTokens(const std::string &s)
 }
 
 void ExtractGHKM::WriteGlueGrammar(
-    const std::set<std::string> &labelSet,
-    const std::map<std::string, int> &topLabelSet,
-    std::ostream &out)
+  const std::set<std::string> &labelSet,
+  const std::map<std::string, int> &topLabelSet,
+  std::ostream &out)
 {
   // chose a top label that is not already a label
   std::string topLabel = "QQQQQQ";
@@ -438,29 +454,29 @@ void ExtractGHKM::WriteGlueGrammar(
   }
 
   // basic rules
-  out << "<s> [X] ||| <s> [" << topLabel << "] ||| 1  ||| " << std::endl;
-  out << "[X][" << topLabel << "] </s> [X] ||| [X][" << topLabel << "] </s> [" << topLabel << "] ||| 1 ||| 0-0 " << std::endl;
+  out << "<s> [X] ||| <s> [" << topLabel << "] ||| 1 ||| ||| ||| ||| {{Tree ( " << topLabel << " ( SSTART <s> ) )}}" << std::endl;
+  out << "[X][" << topLabel << "] </s> [X] ||| [X][" << topLabel << "] </s> [" << topLabel << "] ||| 1 ||| 0-0 ||| ||| ||| {{Tree ( " << topLabel << " ( SEND </s> ) )}}" << std::endl;
 
   // top rules
   for (std::map<std::string, int>::const_iterator i = topLabelSet.begin();
        i != topLabelSet.end(); ++i) {
-    out << "<s> [X][" << i->first << "] </s> [X] ||| <s> [X][" << i->first << "] </s> [" << topLabel << "] ||| 1 ||| 1-1" << std::endl;
+    out << "<s> [X][" << i->first << "] </s> [X] ||| <s> [X][" << i->first << "] </s> [" << topLabel << "] ||| 1 ||| 1-1 ||| ||| ||| {{Tree ( " << topLabel << " ( SSTART <s> ) ( " << i->first << " ) ( SEND </s> ) )}}" << std::endl;
   }
 
   // glue rules
   for(std::set<std::string>::const_iterator i = labelSet.begin();
       i != labelSet.end(); i++ ) {
-    out << "[X][" << topLabel << "] [X][" << *i << "] [X] ||| [X][" << topLabel << "] [X][" << *i << "] [" << topLabel << "] ||| 2.718 ||| 0-0 1-1" << std::endl;
+    out << "[X][" << topLabel << "] [X][" << *i << "] [X] ||| [X][" << topLabel << "] [X][" << *i << "] [" << topLabel << "] ||| 2.718 ||| 0-0 1-1 ||| ||| ||| {{Tree ( " << topLabel << " ( "<< topLabel << " ) ( " << *i << " ) )}}" << std::endl;
   }
   // glue rule for unknown word...
-  out << "[X][" << topLabel << "] [X][X] [X] ||| [X][" << topLabel << "] [X][X] [" << topLabel << "] ||| 2.718 |||  0-0 1-1 " << std::endl;
+  out << "[X][" << topLabel << "] [X][X] [X] ||| [X][" << topLabel << "] [X][X] [" << topLabel << "] ||| 2.718 ||| 0-0 1-1 ||| ||| ||| {{Tree ( " << topLabel << " ( X ) )}}" << std::endl;
 }
 
 void ExtractGHKM::CollectWordLabelCounts(
-    ParseTree &root,
-    const Options &options,
-    std::map<std::string, int> &wordCount,
-    std::map<std::string, std::string> &wordLabel)
+  ParseTree &root,
+  const Options &options,
+  std::map<std::string, int> &wordCount,
+  std::map<std::string, std::string> &wordLabel)
 {
   std::vector<const ParseTree*> leaves;
   root.GetLeaves(std::back_inserter(leaves));
@@ -486,10 +502,10 @@ void ExtractGHKM::CollectWordLabelCounts(
 }
 
 void ExtractGHKM::WriteUnknownWordLabel(
-    const std::map<std::string, int> &wordCount,
-    const std::map<std::string, std::string> &wordLabel,
-    const Options &options,
-    std::ostream &out)
+  const std::map<std::string, int> &wordCount,
+  const std::map<std::string, std::string> &wordLabel,
+  const Options &options,
+  std::ostream &out)
 {
   std::map<std::string, int> labelCount;
   int total = 0;

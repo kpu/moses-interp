@@ -31,14 +31,16 @@ using namespace MosesTraining;
 using namespace std;
 
 //pesky global variables
-namespace MosesTraining {
-  bool hierarchicalFlag = false;
-  Vocabulary vcbT;
-  Vocabulary vcbS;
+namespace MosesTraining
+{
+bool hierarchicalFlag = false;
+Vocabulary vcbT;
+Vocabulary vcbS;
 }
 
 
-const char *DomainFileLocation() {
+const char *DomainFileLocation()
+{
   if (boost::unit_test::framework::master_test_suite().argc < 2) {
     return "test.domain";
   }
@@ -62,12 +64,14 @@ BOOST_AUTO_TEST_CASE(manager_configure_domain_except)
 
 template <class Expected>
 static void checkDomainConfigured(
-      const vector<string>& args) 
+  const vector<string>& args)
 {
   ScoreFeatureManager manager;
   manager.configure(args);
   const std::vector<ScoreFeaturePtr>& features  = manager.getFeatures();
-  BOOST_REQUIRE_EQUAL(features.size(), 1);
+  //BOOST_REQUIRE_EQUAL(features.size(), 2);
+  //if I add to features this check will fail?
+  BOOST_REQUIRE_EQUAL(features.size(), 1); //MARIA -> what is this check and why does it fail when I add my feature?
   Expected* feature = dynamic_cast<Expected*>(features[0].get());
   BOOST_REQUIRE(feature);
   BOOST_CHECK(manager.includeSentenceId());
@@ -76,17 +80,17 @@ static void checkDomainConfigured(
 BOOST_AUTO_TEST_CASE(manager_config_domain)
 {
   checkDomainConfigured<RatioDomainFeature>
-    (boost::assign::list_of ("--DomainRatio")("/dev/null"));
+  (boost::assign::list_of ("--DomainRatio")("/dev/null"));
   checkDomainConfigured<IndicatorDomainFeature>
-    (boost::assign::list_of("--DomainIndicator")("/dev/null"));
+  (boost::assign::list_of("--DomainIndicator")("/dev/null"));
   checkDomainConfigured<SubsetDomainFeature>
-    (boost::assign::list_of("--DomainSubset")("/dev/null"));
+  (boost::assign::list_of("--DomainSubset")("/dev/null"));
   checkDomainConfigured<SparseRatioDomainFeature>
-    (boost::assign::list_of("--SparseDomainRatio")("/dev/null"));
+  (boost::assign::list_of("--SparseDomainRatio")("/dev/null"));
   checkDomainConfigured<SparseIndicatorDomainFeature>
-    (boost::assign::list_of("--SparseDomainIndicator")("/dev/null"));
+  (boost::assign::list_of("--SparseDomainIndicator")("/dev/null"));
   checkDomainConfigured<SparseSubsetDomainFeature>
-    (boost::assign::list_of("--SparseDomainSubset")("/dev/null"));
+  (boost::assign::list_of("--SparseDomainSubset")("/dev/null"));
 }
 
 
@@ -98,8 +102,8 @@ BOOST_AUTO_TEST_CASE(domain_equals)
   char buf2[] = "a ||| b ||| 0-0 ||| 2";
   char buf3[] = "a ||| b ||| 0-0 ||| 3";
   a1.create(buf1, 0, true); //domain a
-  a2.create(buf2, 1, true); //domain c  
-  a3.create(buf3, 2, true); //domain c 
+  a2.create(buf2, 1, true); //domain c
+  a3.create(buf3, 2, true); //domain c
   BOOST_CHECK(feature.equals(a2,a3));
   BOOST_CHECK(!feature.equals(a1,a3));
   BOOST_CHECK(!feature.equals(a1,a3));

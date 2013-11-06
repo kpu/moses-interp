@@ -1,4 +1,3 @@
-
 #include "Manager.h"
 #include "SearchCubePruning.h"
 #include "SearchNormal.h"
@@ -7,6 +6,14 @@
 
 namespace Moses
 {
+
+Search::Search(Manager& manager)
+  : m_manager(manager)
+  ,m_inputPath()
+  ,m_initialTransOpt()
+{
+  m_initialTransOpt.SetInputPath(m_inputPath);
+}
 
 
 Search *Search::CreateSearch(Manager& manager, const InputType &source,
@@ -26,9 +33,6 @@ Search *Search::CreateSearch(Manager& manager, const InputType &source,
     abort();
     return NULL;
   }
-
 }
 
 }
-
-

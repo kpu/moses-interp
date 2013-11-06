@@ -1,5 +1,6 @@
 #include "DynSuffixArray.h"
 #include <iostream>
+#include <boost/foreach.hpp>
 
 using namespace std;
 
@@ -74,12 +75,12 @@ int DynSuffixArray::F_firstIdx(unsigned word)
   // return index of first row where word is found in m_F
   /*for(int i=0; i < m_F->size(); ++i) {
     if(m_F->at(i) == word) {
-      return i; 
+      return i;
     }
   }
   return -1;*/
-  //NOTE: lower_bound  is faster than linear search above but may cause issues 
-  //      if ordering of vocab is not consecutive (ie..after deletions) 
+  //NOTE: lower_bound  is faster than linear search above but may cause issues
+  //      if ordering of vocab is not consecutive (ie..after deletions)
   int low = std::lower_bound(m_F->begin(), m_F->end(), word) - m_F->begin();
   //cerr << "in F_firstIdx with word = " << word << " and low = " << low <<  " and F->size() =" << m_F->size() << endl;
   if((size_t)low >= m_F->size())
@@ -146,8 +147,8 @@ void DynSuffixArray::Reorder(unsigned j, unsigned jprime)
 {
   set<pair<unsigned, unsigned> > seen;
   while(j != jprime) {
-    // this 'seenit' check added for data with many loops. will remove after double 
-    // checking.  
+    // this 'seenit' check added for data with many loops. will remove after double
+    // checking.
     bool seenit = seen.insert(std::make_pair(j, jprime)).second;
     if(seenit) {
       for(size_t i=1; i < m_SA->size(); ++i) {
@@ -163,9 +164,9 @@ void DynSuffixArray::Reorder(unsigned j, unsigned jprime)
     int new_j = LastFirstFunc(j);
     CHECK(j <= jprime);
     // for SA and L, the element at pos j is moved to pos j'
-    m_L->insert(m_L->begin() + jprime + 1, m_L->at(j)); 
+    m_L->insert(m_L->begin() + jprime + 1, m_L->at(j));
     m_L->erase(m_L->begin() + j);
-    m_SA->insert(m_SA->begin() + jprime + 1, m_SA->at(j)); 
+    m_SA->insert(m_SA->begin() + jprime + 1, m_SA->at(j));
     m_SA->erase(m_SA->begin() + j);
     // all ISA values between (j...j'] decremented
     for(size_t i = 0; i < m_ISA->size(); ++i) {
@@ -215,8 +216,37 @@ void DynSuffixArray::Substitute(vuint_t* /* newSents */, unsigned /* newIndex */
   return;
 }
 
+ComparePosition::
+ComparePosition(vuint_t const& crp, vuint_t const& sfa)
+  : m_crp(crp), m_sfa(sfa) { }
+
+bool
+ComparePosition::
+operator()(unsigned const& i, vector<wordID_t> const& phrase) const
+{
+  unsigned const* x = &m_crp.at(i);
+  unsigned const* e = &m_crp.back();
+  size_t k = 0;
+  for (; k < phrase.size() && x < e; ++k, ++x)
+    if (*x != phrase[k]) return *x < phrase[k];
+  return (x == e && k < phrase.size());
+}
+
+bool
+ComparePosition::
+operator()(vector<wordID_t> const& phrase, unsigned const& i) const
+{
+  unsigned const* x = &m_crp.at(i);
+  unsigned const* e = &m_crp.back();
+  size_t k = 0;
+  for (; k < phrase.size() && x < e; ++k, ++x)
+    if (*x != phrase[k]) return phrase[k] < *x;
+  return false; // (k == phrase.size() && x < e);
+}
+
 bool DynSuffixArray::GetCorpusIndex(const vuint_t* phrase, vuint_t* indices)
 {
+  // DOES THIS EVEN WORK WHEN A DynSuffixArray has been saved and reloaded????
   pair<vuint_t::iterator,vuint_t::iterator> bounds;
   indices->clear();
   size_t phrasesize = phrase->size();
@@ -249,6 +279,16 @@ bool DynSuffixArray::GetCorpusIndex(const vuint_t* phrase, vuint_t* indices)
   }
   //cerr << "Total count of phrase = " << indices->size() << endl;
   return (indices->size() > 0);
+}
+
+size_t
+DynSuffixArray::
+GetCount(vuint_t const& phrase) const
+{
+  ComparePosition cmp(*m_corpus, *m_SA);
+  vuint_t::const_iterator lb = lower_bound(m_SA->begin(), m_SA->end(), phrase, cmp);
+  vuint_t::const_iterator ub = upper_bound(m_SA->begin(), m_SA->end(), phrase, cmp);
+  return ub-lb;
 }
 
 void DynSuffixArray::Save(FILE* fout)

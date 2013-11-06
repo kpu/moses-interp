@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #define moses_TargetPhraseCollection_h
 
 #include <vector>
+#include <iostream>
 #include "TargetPhrase.h"
 #include "Util.h"
 
@@ -33,12 +34,15 @@ namespace Moses
 class TargetPhraseCollection
 {
 protected:
-  std::vector<TargetPhrase*> m_collection;
+  friend std::ostream& operator<<(std::ostream &, const TargetPhraseCollection &);
+
+  typedef std::vector<const TargetPhrase*> CollType;
+  CollType m_collection;
 
 public:
   // iters
-  typedef std::vector<TargetPhrase*>::iterator iterator;
-  typedef std::vector<TargetPhrase*>::const_iterator const_iterator;
+  typedef CollType::iterator iterator;
+  typedef CollType::const_iterator const_iterator;
 
   iterator begin() {
     return m_collection.begin();
@@ -53,11 +57,18 @@ public:
     return m_collection.end();
   }
 
-  ~TargetPhraseCollection() {
-    RemoveAllInColl(m_collection);
+  TargetPhraseCollection()
+  {}
+
+  TargetPhraseCollection(const TargetPhraseCollection &copy);
+
+  virtual ~TargetPhraseCollection() {
+    Remove();
   }
 
-  const std::vector<TargetPhrase*> &GetCollection() const { return m_collection; }
+  const CollType &GetCollection() const {
+    return m_collection;
+  }
 
   //! divide collection into 2 buckets using std::nth_element, the top & bottom according to table limit
   void NthElement(size_t tableLimit);
@@ -78,6 +89,38 @@ public:
   void Prune(bool adhereTableLimit, size_t tableLimit);
   void Sort(bool adhereTableLimit, size_t tableLimit);
 
+  void Remove() {
+    RemoveAllInColl(m_collection);
+  }
+  void Detach() {
+    m_collection.clear();
+  }
+
+};
+
+
+// LEGACY
+// DO NOT USE. NOT LEGACY CODE
+class TargetPhraseCollectionWithSourcePhrase : public TargetPhraseCollection
+{
+protected:
+  //friend std::ostream& operator<<(std::ostream &, const TargetPhraseCollectionWithSourcePhrase &);
+
+  // TODO boost::ptr_vector
+  std::vector<Phrase> m_sourcePhrases;
+
+public:
+  const std::vector<Phrase> &GetSourcePhrases() const {
+    return m_sourcePhrases;
+  }
+
+  void Add(TargetPhrase *targetPhrase);
+  void Add(TargetPhrase *targetPhrase, const Phrase &sourcePhrase);
+};
+
+struct CompareTargetPhrase {
+  bool operator() (const TargetPhrase *a, const TargetPhrase *b) const;
+  bool operator() (const TargetPhrase &a, const TargetPhrase &b) const;
 };
 
 }

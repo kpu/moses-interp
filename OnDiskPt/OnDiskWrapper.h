@@ -22,13 +22,13 @@
 #include <fstream>
 #include "Vocab.h"
 #include "PhraseNode.h"
-#include "../moses/Word.h"
+#include "moses/Word.h"
 
 namespace OnDiskPt
 {
 const float DEFAULT_COUNT = 66666;
 
-/** Global class with misc information need to create and use the on-disk rule table. 
+/** Global class with misc information need to create and use the on-disk rule table.
  * 1 object of this class should be instantiated per rule table.
  * Currently only hierarchical/syntax models use this, but can & should be used with pb models too
  */
@@ -95,12 +95,16 @@ public:
     return 1;
   }
 
-  PhraseNode &GetRootSourceNode();
+  PhraseNode &GetRootSourceNode() {
+    return *m_rootSourceNode;
+  }
+  const PhraseNode &GetRootSourceNode() const {
+    return *m_rootSourceNode;
+  }
 
   UINT64 GetMisc(const std::string &key) const;
 
-  Word *ConvertFromMoses(Moses::FactorDirection direction
-                         , const std::vector<Moses::FactorType> &factorsVec
+  Word *ConvertFromMoses(const std::vector<Moses::FactorType> &factorsVec
                          , const Moses::Word &origWord) const;
 
 };

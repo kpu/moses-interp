@@ -24,6 +24,7 @@
 #include "util/check.hh"
 #include <string>
 #include "OnDiskWrapper.h"
+#include "moses/Factor.h"
 
 using namespace std;
 
@@ -191,35 +192,27 @@ UINT64 OnDiskWrapper::GetMisc(const std::string &key) const
   return iter->second;
 }
 
-PhraseNode &OnDiskWrapper::GetRootSourceNode()
-{
-  return *m_rootSourceNode;
-}
-
-Word *OnDiskWrapper::ConvertFromMoses(Moses::FactorDirection /* direction */
-                                      , const std::vector<Moses::FactorType> &factorsVec
+Word *OnDiskWrapper::ConvertFromMoses(const std::vector<Moses::FactorType> &factorsVec
                                       , const Moses::Word &origWord) const
 {
   bool isNonTerminal = origWord.IsNonTerminal();
   Word *newWord = new Word(isNonTerminal);
   stringstream strme;
 
-  size_t factorType = factorsVec[0];  
+  size_t factorType = factorsVec[0];
   const Moses::Factor *factor = origWord.GetFactor(factorType);
-  CHECK(factor);  
-  string str = factor->GetString();
-  strme << str;
+  CHECK(factor);
+  strme << factor->GetString();
 
   for (size_t ind = 1 ; ind < factorsVec.size() ; ++ind) {
     size_t factorType = factorsVec[ind];
     const Moses::Factor *factor = origWord.GetFactor(factorType);
-    if (factor == NULL)
-    { // can have less factors than factorType.size()
+    if (factor == NULL) {
+      // can have less factors than factorType.size()
       break;
     }
     CHECK(factor);
-    string str = factor->GetString();
-    strme << "|" << str;    
+    strme << "|" << factor->GetString();
   } // for (size_t factorType
 
   bool found;

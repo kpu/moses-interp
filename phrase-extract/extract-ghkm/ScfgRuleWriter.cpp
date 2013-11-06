@@ -1,17 +1,17 @@
 /***********************************************************************
  Moses - statistical machine translation system
  Copyright (C) 2006-2011 University of Edinburgh
- 
+
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
  License as published by the Free Software Foundation; either
  version 2.1 of the License, or (at your option) any later version.
- 
+
  This library is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
- 
+
  You should have received a copy of the GNU Lesser General Public
  License along with this library; if not, write to the Free Software
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
@@ -30,10 +30,12 @@
 #include <sstream>
 #include <vector>
 
-namespace Moses {
-namespace GHKM {
+namespace Moses
+{
+namespace GHKM
+{
 
-void ScfgRuleWriter::Write(const ScfgRule &rule)
+void ScfgRuleWriter::Write(const ScfgRule &rule, bool printEndl)
 {
   std::ostringstream sourceSS;
   std::ostringstream targetSS;
@@ -55,23 +57,24 @@ void ScfgRuleWriter::Write(const ScfgRule &rule)
     m_inv << " " << p->second << "-" << p->first;
   }
 
-  // Write a count of 1 and an empty NT length column to the forward extract
-  // file.
-  // TODO Add option to write NT length?
-  m_fwd << " ||| 1 ||| |||";
-  if (m_options.pcfg) {
-    // Write the PCFG score.
-    m_fwd << " " << std::exp(rule.GetPcfgScore());
-  }
-  m_fwd << std::endl;
+  // Write a count of 1.
+  m_fwd << " ||| 1";
+  m_inv << " ||| 1";
 
-  // Write a count of 1 to the inverse extract file.
-  m_inv << " ||| 1" << std::endl;
+  // Write the PCFG score (if requested).
+  if (m_options.pcfg) {
+    m_fwd << " ||| " << std::exp(rule.GetPcfgScore());
+  }
+
+  if (printEndl) {
+    m_fwd << std::endl;
+    m_inv << std::endl;
+  }
 }
 
 void ScfgRuleWriter::WriteStandardFormat(const ScfgRule &rule,
-                                         std::ostream &sourceSS,
-                                         std::ostream &targetSS)
+    std::ostream &sourceSS,
+    std::ostream &targetSS)
 {
   const std::vector<Symbol> &sourceRHS = rule.GetSourceRHS();
   const std::vector<Symbol> &targetRHS = rule.GetTargetRHS();
@@ -122,8 +125,8 @@ void ScfgRuleWriter::WriteStandardFormat(const ScfgRule &rule,
 }
 
 void ScfgRuleWriter::WriteUnpairedFormat(const ScfgRule &rule,
-                                         std::ostream &sourceSS,
-                                         std::ostream &targetSS)
+    std::ostream &sourceSS,
+    std::ostream &targetSS)
 {
   const std::vector<Symbol> &sourceRHS = rule.GetSourceRHS();
   const std::vector<Symbol> &targetRHS = rule.GetTargetRHS();
@@ -158,6 +161,15 @@ void ScfgRuleWriter::WriteSymbol(const Symbol &symbol, std::ostream &out)
   } else {
     out << symbol.GetValue();
   }
+}
+
+void ScfgRuleWriter::Write(const ScfgRule &rule, const Subgraph &g) 
+{
+    Write(rule,false);
+    m_fwd << " Tree ";
+    g.PrintTree(m_fwd);
+    m_fwd << std::endl;
+    m_inv << std::endl;
 }
 
 }  // namespace GHKM

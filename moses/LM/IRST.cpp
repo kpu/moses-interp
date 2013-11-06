@@ -39,10 +39,17 @@ using namespace std;
 
 namespace Moses
 {
-
-LanguageModelIRST::LanguageModelIRST(int dub)
-  :m_lmtb(0),m_lmtb_dub(dub)
+LanguageModelIRST::LanguageModelIRST(const std::string &line)
+  :LanguageModelSingleFactor(line)
 {
+  const StaticData &staticData = StaticData::Instance();
+  int threadCount = staticData.ThreadCount();
+  if (threadCount != 1) {
+    throw runtime_error("Error: " + SPrint(threadCount) + " number of threads specified but IRST LM is not threadsafe.");
+  }
+
+  ReadParameters();
+
 }
 
 LanguageModelIRST::~LanguageModelIRST()
@@ -57,28 +64,13 @@ LanguageModelIRST::~LanguageModelIRST()
 }
 
 
-bool LanguageModelIRST::Load(const std::string &filePath,
-                             FactorType factorType,
-                             size_t nGramOrder)
+void LanguageModelIRST::Load()
 {
-  cerr << "In LanguageModelIRST::Load: nGramOrder = " << nGramOrder << "\n";
-
-  const StaticData &staticData = StaticData::Instance();
-  int threadCount = staticData.ThreadCount();
-  if (threadCount != 1)
-  {
-    UserMessage::Add(threadCount + " number of threads specified but IRST LM is not threadsafe.");
-    return false;
-  }
+  cerr << "In LanguageModelIRST::Load: nGramOrder = " << m_nGramOrder << "\n";
 
   FactorCollection &factorCollection = FactorCollection::Instance();
 
-  m_factorType 	 = factorType;
-  m_nGramOrder	 = nGramOrder;
-  m_filePath = filePath;
-
-
-  m_lmtb = m_lmtb->CreateLanguageModel(m_filePath); 
+  m_lmtb = m_lmtb->CreateLanguageModel(m_filePath);
   m_lmtb->setMaxLoadedLevel(1000);
   m_lmtb->load(m_filePath);
   d=m_lmtb->getDict();
@@ -99,8 +91,6 @@ bool LanguageModelIRST::Load(const std::string &filePath,
   m_lmtb->init_caches(m_lmtb_size>2?m_lmtb_size-1:2);
 
   if (m_lmtb_dub > 0) m_lmtb->setlogOOVpenalty(m_lmtb_dub);
-
-  return true;
 }
 
 void LanguageModelIRST::CreateFactors(FactorCollection &factorCollection)
@@ -125,13 +115,13 @@ void LanguageModelIRST::CreateFactors(FactorCollection &factorCollection)
   factorId = m_sentenceStart->GetId();
   m_lmtb_sentenceStart=lmIdMap[factorId] = GetLmID(BOS_);
   maxFactorId = (factorId > maxFactorId) ? factorId : maxFactorId;
-  m_sentenceStartArray[m_factorType] = m_sentenceStart;
+  m_sentenceStartWord[m_factorType] = m_sentenceStart;
 
   m_sentenceEnd		= factorCollection.AddFactor(Output, m_factorType, EOS_);
   factorId = m_sentenceEnd->GetId();
   m_lmtb_sentenceEnd=lmIdMap[factorId] = GetLmID(EOS_);
   maxFactorId = (factorId > maxFactorId) ? factorId : maxFactorId;
-  m_sentenceEndArray[m_factorType] = m_sentenceEnd;
+  m_sentenceEndWord[m_factorType] = m_sentenceEnd;
 
   // add to lookup vector in object
   m_lmIdLookup.resize(maxFactorId+1);
@@ -149,22 +139,22 @@ int LanguageModelIRST::GetLmID( const std::string &str ) const
 }
 
 int LanguageModelIRST::GetLmID( const Factor *factor ) const
-{  
+{
   size_t factorId = factor->GetId();
 
   if  ((factorId >= m_lmIdLookup.size()) || (m_lmIdLookup[factorId] == m_empty)) {
     if (d->incflag()==1) {
-      std::string s = factor->GetString();
+      std::string s = factor->GetString().as_string();
       int code = d->encode(s.c_str());
 
       //////////
       ///poiche' non c'e' distinzione tra i factorIDs delle parole sorgenti
-      ///e delle parole target in Moses, puo' accadere che una parola target 
+      ///e delle parole target in Moses, puo' accadere che una parola target
       ///di cui non sia stato ancora calcolato il suo codice target abbia
       ///comunque un factorID noto (e quindi minore di m_lmIdLookup.size())
       ///E' necessario dunque identificare questi casi di indeterminatezza
       ///del codice target. Attualamente, questo controllo e' stato implementato
-      ///impostando a    m_empty     tutti i termini che non hanno ancora 
+      ///impostando a    m_empty     tutti i termini che non hanno ancora
       //ricevuto un codice target effettivo
       ///////////
 
@@ -176,7 +166,7 @@ int LanguageModelIRST::GetLmID( const Factor *factor ) const
 /// IN POSIZIONE (factorID-1) invece che in posizione factrID dove dopo andiamo a leggerlo (vedi caso C
 /// Cosi' funziona ....
 /// ho un dubbio su cosa c'e' nelle prime posizioni di m_lmIdLookup
-/// quindi 
+/// quindi
 /// e scopro che rimane vuota una entry ogni due
 /// perche' factorID cresce di due in due (perche' codifica sia source che target) "vuota" la posizione (factorID-1)
 /// non da problemi di correttezza, ma solo di "spreco" di memoria
@@ -186,10 +176,10 @@ int LanguageModelIRST::GetLmID( const Factor *factor ) const
 ////////////////
 
 
-      if (factorId >= m_lmIdLookup.size()){
-	//resize and fill with m_empty  
-	//increment the array more than needed to avoid too many resizing operation.
-	m_lmIdLookup.resize(factorId+10, m_empty); 
+      if (factorId >= m_lmIdLookup.size()) {
+        //resize and fill with m_empty
+        //increment the array more than needed to avoid too many resizing operation.
+        m_lmIdLookup.resize(factorId+10, m_empty);
       }
 
       //insert new code
@@ -250,6 +240,13 @@ bool LMCacheCleanup(size_t sentences_done, size_t m_lmcache_cleanup_threshold)
   return false;
 }
 
+void LanguageModelIRST::InitializeForInput(InputType const& source)
+{
+  //nothing to do
+#ifdef TRACE_CACHE
+  m_lmtb->sentence_id++;
+#endif
+}
 
 void LanguageModelIRST::CleanUpAfterSentenceProcessing(const InputType& source)
 {
@@ -263,14 +260,6 @@ void LanguageModelIRST::CleanUpAfterSentenceProcessing(const InputType& source)
     TRACE_ERR( "reset caches\n");
     m_lmtb->reset_caches();
   }
-}
-
-void LanguageModelIRST::InitializeBeforeSentenceProcessing()
-{
-  //nothing to do
-#ifdef TRACE_CACHE
-  m_lmtb->sentence_id++;
-#endif
 }
 
 }

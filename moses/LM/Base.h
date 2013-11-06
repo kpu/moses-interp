@@ -25,31 +25,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <string>
 #include <cstddef>
 
-#include "moses/FeatureFunction.h"
+#include "moses/FF/StatefulFeatureFunction.h"
 
 namespace Moses
 {
 
-namespace Incremental { class Manager; }
+namespace Incremental
+{
+class Manager;
+}
 
 class FactorCollection;
 class Factor;
 class Phrase;
 
 //! Abstract base class which represent a language model on a contiguous phrase
-class LanguageModel : public StatefulFeatureFunction {
+class LanguageModel : public StatefulFeatureFunction
+{
 protected:
-  LanguageModel();
+  LanguageModel(const std::string &line);
 
   // This can't be in the constructor for virual function dispatch reasons
 
   bool m_enableOOVFeature;
-  
-public:
-  virtual ~LanguageModel();
 
-  // Make another feature without copying the underlying model data.  
-  virtual LanguageModel *Duplicate() const = 0;
+public:
+  static const LanguageModel &GetFirstLM();
+
+  virtual ~LanguageModel();
 
   bool OOVFeatureEnabled() const {
     return m_enableOOVFeature;
@@ -58,25 +61,12 @@ public:
   float GetWeight() const;
   float GetOOVWeight() const;
 
-  std::string GetScoreProducerWeightShortName(unsigned) const {
-    return "lm";
-  }
-
-  virtual void InitializeBeforeSentenceProcessing() {}
-
-  virtual void CleanUpAfterSentenceProcessing(const InputType& source) {}
 
   virtual const FFState* EmptyHypothesisState(const InputType &input) const = 0;
-
-  /* whether this LM can be used on a particular phrase.
-   * Should return false if phrase size = 0 or factor types required don't exists
-   */
-  virtual bool Useable(const Phrase &phrase) const = 0;
 
   /* calc total unweighted LM score of this phrase and return score via arguments.
    * Return scores should always be in natural log, regardless of representation with LM implementation.
    * Uses GetValue() of inherited class.
-   * Useable() should be called beforehand on the phrase
    * \param fullScore scores of all unigram, bigram... of contiguous n-gram of the phrase
    * \param ngramScore score of only n-gram of order m_nGramOrder
    * \param oovCount number of LM OOVs
@@ -95,6 +85,18 @@ public:
 
   // KenLM only (others throw an exception): call incremental search with the model and mapping.
   virtual void IncrementalCallback(Incremental::Manager &manager) const;
+  virtual void ReportHistoryOrder(std::ostream &out,const Phrase &phrase) const;
+
+  virtual void Evaluate(const Phrase &source
+                        , const TargetPhrase &targetPhrase
+                        , ScoreComponentCollection &scoreBreakdown
+                        , ScoreComponentCollection &estimatedFutureScore) const;
+  void Evaluate(const InputType &input
+                , const InputPath &inputPath
+                , const TargetPhrase &targetPhrase
+                , ScoreComponentCollection &scoreBreakdown) const
+  {}
+
 };
 
 }

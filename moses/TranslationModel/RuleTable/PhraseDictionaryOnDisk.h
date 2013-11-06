@@ -28,61 +28,60 @@
 #include "OnDiskPt/OnDiskWrapper.h"
 #include "OnDiskPt/Word.h"
 #include "OnDiskPt/PhraseNode.h"
+#include "util/check.hh"
+
+#ifdef WITH_THREADS
+#include <boost/thread/tss.hpp>
+#else
+#include <boost/scoped_ptr.hpp>
+#endif
 
 namespace Moses
 {
 class TargetPhraseCollection;
 class DottedRuleStackOnDisk;
-class WordPenaltyProducer;
+class InputPath;
+class ChartParser;
 
 /** Implementation of on-disk phrase table for hierarchical/syntax model.
- */   
+ */
 class PhraseDictionaryOnDisk : public PhraseDictionary
 {
   typedef PhraseDictionary MyBase;
   friend std::ostream& operator<<(std::ostream&, const PhraseDictionaryOnDisk&);
 
 protected:
-  OnDiskPt::OnDiskWrapper m_dbWrapper;
-  const LMList* m_languageModels;
-  const WordPenaltyProducer* m_wpProducer;
-  std::vector<FactorType> m_inputFactorsVec, m_outputFactorsVec;
-  std::string m_filePath;
+#ifdef WITH_THREADS
+  boost::thread_specific_ptr<OnDiskPt::OnDiskWrapper> m_implementation;
+#else
+  boost::scoped_ptr<OnDiskPt::OnDiskWrapper> m_implementation;
+#endif
 
-  void LoadTargetLookup();
+  OnDiskPt::OnDiskWrapper &GetImplementation();
+  const OnDiskPt::OnDiskWrapper &GetImplementation() const;
+
+  void GetTargetPhraseCollectionBatch(InputPath &inputPath) const;
 
 public:
-  PhraseDictionaryOnDisk(size_t numScoreComponent, PhraseDictionaryFeature* feature)
-    : MyBase(numScoreComponent, feature), m_languageModels(NULL)
-  {}
-  virtual ~PhraseDictionaryOnDisk();
+  PhraseDictionaryOnDisk(const std::string &line);
+  ~PhraseDictionaryOnDisk();
+  void Load();
 
   PhraseTableImplementation GetPhraseTableImplementation() const {
     return OnDisk;
   }
 
-  bool Load(const std::vector<FactorType> &input
-            , const std::vector<FactorType> &output
-            , const std::string &filePath
-	    , const std::vector<float> &weight
-            , size_t tableLimit,
-            const LMList& languageModels,
-            const WordPenaltyProducer* wpProducer);
-
-  std::string GetScoreProducerDescription(unsigned) const {
-    return "BerkeleyPt";
-  }
-
   // PhraseDictionary impl
-  //! find list of translations that can translates src. Only for phrase input
-  virtual const TargetPhraseCollection *GetTargetPhraseCollection(const Phrase& src) const;
-
-  void InitializeForInput(const InputType& input);
-  void CleanUp();
-
   virtual ChartRuleLookupManager *CreateRuleLookupManager(
-    const InputType &,
+    const ChartParser &parser,
     const ChartCellCollectionBase &);
+
+  virtual void InitializeForInput(InputType const& source);
+  void GetTargetPhraseCollectionBatch(const InputPathList &inputPathQueue) const;
+
+  const TargetPhraseCollection *GetTargetPhraseCollection(const OnDiskPt::PhraseNode *ptNode) const;
+  const TargetPhraseCollection *GetTargetPhraseCollectionNonCache(const OnDiskPt::PhraseNode *ptNode) const;
+
 };
 
 }  // namespace Moses

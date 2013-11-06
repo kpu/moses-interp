@@ -49,12 +49,12 @@ public:
   bool duplicateRules;
   bool fractionalCounting;
   bool pcfgScore;
-  bool outputNTLengths;
   bool gzOutput;
   bool unpairedExtractFormat;
   bool conditionOnTargetLhs;
   bool boundaryRules;
-  
+  bool flexScoreFlag;
+
   RuleExtractionOptions()
     : maxSpan(10)
     , minHoleSource(2)
@@ -82,12 +82,11 @@ public:
     , duplicateRules(true)
     , fractionalCounting(true)
     , pcfgScore(false)
-    , outputNTLengths(false)
     , gzOutput(false)
     , unpairedExtractFormat(false)
     , conditionOnTargetLhs(false)
     , boundaryRules(false)
-  {}
+    , flexScoreFlag(false) {}
 };
 
 }

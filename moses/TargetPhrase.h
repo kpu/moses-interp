@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef moses_TargetPhrase_h
 #define moses_TargetPhrase_h
 
+#include <algorithm>
 #include <vector>
 #include "TypeDef.h"
 #include "Phrase.h"
@@ -36,76 +37,46 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 namespace Moses
 {
-
-class LMList;
-class ScoreProducer;
-class TranslationSystem;
-class WordPenaltyProducer;
+class FeatureFunction;
+class InputPath;
 
 /** represents an entry on the target side of a phrase table (scores, translation, alignment)
  */
 class TargetPhrase: public Phrase
 {
+private:
   friend std::ostream& operator<<(std::ostream&, const TargetPhrase&);
-protected:
-  float m_fullScore;
+  friend void swap(TargetPhrase &first, TargetPhrase &second);
+
+  float m_fullScore, m_futureScore;
   ScoreComponentCollection m_scoreBreakdown;
 
-	// in case of confusion net, ptr to source phrase
-	Phrase m_sourcePhrase; 
-	const AlignmentInfo* m_alignTerm, *m_alignNonTerm;
-	Word m_lhsTarget;
+  const AlignmentInfo* m_alignTerm, *m_alignNonTerm;
+  const Word *m_lhsTarget;
+  mutable Phrase *m_ruleSource; // to be set by the feature function that needs it.
 
+  std::map<std::string, std::string> m_properties;
 public:
   TargetPhrase();
+  TargetPhrase(const TargetPhrase &copy);
   explicit TargetPhrase(std::string out_string);
   explicit TargetPhrase(const Phrase &targetPhrase);
+  ~TargetPhrase();
 
-  //! used by the unknown word handler- these targets
-  //! don't have a translation score, so wp is the only thing used
-  void SetScore(const TranslationSystem* system);
+  // 1st evaluate method. Called during loading of phrase table.
+  void Evaluate(const Phrase &source, const std::vector<FeatureFunction*> &ffs);
 
-  //!Set score for Sentence XML target options
-  void SetScore(float score);
+  // as above, score with ALL FFs
+  // Used only for OOV processing. Doesn't have a phrase table connect with it
+  void Evaluate(const Phrase &source);
 
-  //! Set score for unknown words with input weights
-  void SetScore(const TranslationSystem* system, const Scores &scoreVector);
+  // 'inputPath' is guaranteed to be the raw substring from the input. No factors were added or taken away
+  void Evaluate(const InputType &input, const InputPath &inputPath);
 
+  void SetSparseScore(const FeatureFunction* translationScoreProducer, const StringPiece &sparseString);
 
-  /*** Called immediately after creation to initialize scores.
-   *
-   * @param translationScoreProducer The PhraseDictionaryMemory that this TargetPhrase is contained by.
-   *        Used to identify where the scores for this phrase belong in the list of all scores.
-   * @param scoreVector the vector of scores (log probs) associated with this translation
-   * @param weighT the weights for the individual scores (t-weights in the .ini file)
-   * @param languageModels all the LanguageModels that should be used to compute the LM scores
-   * @param weightWP the weight of the word penalty
-   *
-   * @TODO should this be part of the constructor?  If not, add explanation why not.
-  	*/
-  void SetScore(const ScoreProducer* translationScoreProducer,
-                const Scores &scoreVector,
-                const ScoreComponentCollection &sparseScoreVector,
-                const std::vector<float> &weightT,
-                float weightWP,
-                const LMList &languageModels);
-
-  void SetScoreChart(const ScoreProducer* translationScoreProducer
-                     ,const Scores &scoreVector
-                     ,const std::vector<float> &weightT
-                     ,const LMList &languageModels
-                     ,const WordPenaltyProducer* wpProducer);
-
-  // used by for unknown word proc in chart decoding
-  void SetScore(const ScoreProducer* producer, const Scores &scoreVector);
-
-
-  // used when creating translations of unknown words:
-  void ResetScore();
-  void SetWeights(const ScoreProducer*, const std::vector<float> &weightT);
-
-  TargetPhrase *MergeNext(const TargetPhrase &targetPhrase) const;
-  // used for translation step
+  // used to set translation or gen score
+  void SetXMLScore(float score);
 
 #ifdef HAVE_PROTOBUF
   void WriteToRulePB(hgmert::Rule* pb) const;
@@ -120,35 +91,19 @@ public:
   inline float GetFutureScore() const {
     return m_fullScore;
   }
-  inline void SetFutureScore(float fullScore) {
-    m_fullScore = fullScore;
-  }
-	inline const ScoreComponentCollection &GetScoreBreakdown() const
-	{
-		return m_scoreBreakdown;
-	}
 
-  //TODO: Probably shouldn't copy this, but otherwise ownership is unclear
-	void SetSourcePhrase(const Phrase&  p) 
-	{
-		m_sourcePhrase=p;
-	}
-  // ... but if we must store a copy, at least initialize it in-place
-  Phrase &MutableSourcePhrase() {
-    return m_sourcePhrase;
+  inline const ScoreComponentCollection &GetScoreBreakdown() const {
+    return m_scoreBreakdown;
   }
-	const Phrase& GetSourcePhrase() const 
-	{
-		return m_sourcePhrase;
-	}
-	
-	void SetTargetLHS(const Word &lhs)
-	{ 	m_lhsTarget = lhs; }
-	const Word &GetTargetLHS() const
-	{ return m_lhsTarget; }
-	
-  Word &MutableTargetLHS() {
-    return m_lhsTarget;
+  inline ScoreComponentCollection &GetScoreBreakdown() {
+    return m_scoreBreakdown;
+  }
+
+  void SetTargetLHS(const Word *lhs) {
+    m_lhsTarget = lhs;
+  }
+  const Word &GetTargetLHS() const {
+    return *m_lhsTarget;
   }
 
   void SetAlignmentInfo(const StringPiece &alignString);
@@ -162,27 +117,43 @@ public:
   void SetAlignTerm(const AlignmentInfo::CollType &coll);
   void SetAlignNonTerm(const AlignmentInfo::CollType &coll);
 
-  const AlignmentInfo &GetAlignTerm() const
-	{ return *m_alignTerm; }
-  const AlignmentInfo &GetAlignNonTerm() const
-	{ return *m_alignNonTerm; }
-	
+  const AlignmentInfo &GetAlignTerm() const {
+    return *m_alignTerm;
+  }
+  const AlignmentInfo &GetAlignNonTerm() const {
+    return *m_alignNonTerm;
+  }
+
+  const Phrase *GetRuleSource() const {
+    return m_ruleSource;
+  }
+
+  // To be set by the FF that needs it, by default the rule source = NULL
+  // make a copy of the source side of the rule
+  void SetRuleSource(const Phrase &ruleSource) const;
+
+  void SetProperties(const StringPiece &str);
+  void SetProperty(const std::string &key, const std::string &value) {
+    m_properties[key] = value;
+  }
+  void GetProperty(const std::string &key, std::string &value, bool &found) const;
+
+  void Merge(const TargetPhrase &copy, const std::vector<FactorType>& factorVec);
 
   TO_STRING();
 };
+
+void swap(TargetPhrase &first, TargetPhrase &second);
 
 std::ostream& operator<<(std::ostream&, const TargetPhrase&);
 
 /**
  * Hasher that looks at source and target phrase.
  **/
-struct TargetPhraseHasher 
-{
-  inline size_t operator()(const TargetPhrase& targetPhrase) const
-  {
+struct TargetPhraseHasher {
+  inline size_t operator()(const TargetPhrase& targetPhrase) const {
     size_t seed = 0;
     boost::hash_combine(seed, targetPhrase);
-    boost::hash_combine(seed, targetPhrase.GetSourcePhrase());
     boost::hash_combine(seed, targetPhrase.GetAlignTerm());
     boost::hash_combine(seed, targetPhrase.GetAlignNonTerm());
 
@@ -190,14 +161,11 @@ struct TargetPhraseHasher
   }
 };
 
-struct TargetPhraseComparator
-{
-  inline bool operator()(const TargetPhrase& lhs, const TargetPhrase& rhs) const
-  {
+struct TargetPhraseComparator {
+  inline bool operator()(const TargetPhrase& lhs, const TargetPhrase& rhs) const {
     return lhs.Compare(rhs) == 0 &&
-      lhs.GetSourcePhrase().Compare(rhs.GetSourcePhrase()) == 0 &&
-      lhs.GetAlignTerm() == rhs.GetAlignTerm() &&
-      lhs.GetAlignNonTerm() == rhs.GetAlignNonTerm();
+           lhs.GetAlignTerm() == rhs.GetAlignTerm() &&
+           lhs.GetAlignNonTerm() == rhs.GetAlignNonTerm();
   }
 
 };
