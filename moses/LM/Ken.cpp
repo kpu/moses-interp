@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include "lm/enumerate_vocab.hh"
 #include "lm/left.hh"
 #include "lm/model.hh"
+#include "lm/multi.hh"
 
 #include "Ken.h"
 #include "Base.h"
@@ -183,14 +184,14 @@ template <class Model> void LanguageModelKen<Model>::CalcScore(const Phrase &phr
 
   if (!phrase.GetSize()) return;
 
-  lm::ngram::ChartState discarded_sadly;
-  lm::ngram::RuleScore<Model> scorer(*m_ngram, discarded_sadly);
+  typename Model::State in, out;
 
   size_t position;
   if (m_beginSentenceFactor == phrase.GetWord(0).GetFactor(m_factorType)) {
-    scorer.BeginSentence();
+    in = m_ngram->BeginSentenceState();
     position = 1;
   } else {
+    in = m_ngram->NullContextState();
     position = 0;
   }
 
@@ -200,27 +201,26 @@ template <class Model> void LanguageModelKen<Model>::CalcScore(const Phrase &phr
   for (; position < end_loop; ++position) {
     const Word &word = phrase.GetWord(position);
     if (word.IsNonTerminal()) {
-      fullScore += scorer.Finish();
-      scorer.Reset();
+      abort(); // Unimplemented
     } else {
       lm::WordIndex index = TranslateID(word);
-      scorer.Terminal(index);
+      fullScore += m_ngram->FullScore(in, index, out).prob;
+      in = out;
       if (!index) ++oovCount;
     }
   }
-  float before_boundary = fullScore + scorer.Finish();
+  float before_boundary = fullScore;
   for (; position < phrase.GetSize(); ++position) {
     const Word &word = phrase.GetWord(position);
     if (word.IsNonTerminal()) {
-      fullScore += scorer.Finish();
-      scorer.Reset();
+      abort(); // Unimplemented
     } else {
       lm::WordIndex index = TranslateID(word);
-      scorer.Terminal(index);
+      fullScore += m_ngram->FullScore(in, index, out).prob;
+      in = out;
       if (!index) ++oovCount;
     }
   }
-  fullScore += scorer.Finish();
 
   ngramScore = TransformLMScore(fullScore - before_boundary);
   fullScore = TransformLMScore(fullScore);
@@ -229,7 +229,7 @@ template <class Model> void LanguageModelKen<Model>::CalcScore(const Phrase &phr
 template <class Model> FFState *LanguageModelKen<Model>::Evaluate(const Hypothesis &hypo, const FFState *ps, ScoreComponentCollection *out) const
 {
   typedef KenLMState<typename Model::State> Wrapped;
-  const lm::ngram::State &in_state = static_cast<const Wrapped&>(*ps).state;
+  const typename Model::State &in_state = static_cast<const Wrapped&>(*ps).state;
 
   std::auto_ptr<Wrapped> ret(new Wrapped());
 
@@ -307,7 +307,7 @@ private:
 
 template <class Model> FFState *LanguageModelKen<Model>::EvaluateChart(const ChartHypothesis& hypo, int featureID, ScoreComponentCollection *accumulator) const
 {
-  LanguageModelChartStateKenLM *newState = new LanguageModelChartStateKenLM();
+/*  LanguageModelChartStateKenLM *newState = new LanguageModelChartStateKenLM();
   lm::ngram::RuleScore<Model> ruleScore(*m_ngram, newState->GetChartState());
   const TargetPhrase &target = hypo.GetCurrTargetPhrase();
   const AlignmentInfo::NonTermIndexMap &nonTermIndexMap =
@@ -347,11 +347,13 @@ template <class Model> FFState *LanguageModelKen<Model>::EvaluateChart(const Cha
   float score = ruleScore.Finish();
   score = TransformLMScore(score);
   accumulator->Assign(this, score);
-  return newState;
+  return newState;*/
+  UTIL_THROW(util::Exception, "TODO: fix EvaluateChart for mixed models.");
 }
 
 template <class Model> void LanguageModelKen<Model>::IncrementalCallback(Incremental::Manager &manager) const
 {
+  UTIL_THROW(util::Exception, "TODO: fix IncrementalCallback for mixed models.");
   manager.LMCallback(*m_ngram, m_lmIdLookup);
 }
 
@@ -435,6 +437,10 @@ LanguageModel *ConstructKenLM(const std::string &line, const std::string &file, 
         abort();
       }
     } else {
+      util::FilePiece f(file.c_str());
+      if (lm::multi::kMagicLine == f.ReadLine()) {
+        return new LanguageModelKen<lm::multi::Model>(line, file, factorType, lazy);
+      }
       return new LanguageModelKen<lm::ngram::ProbingModel>(line, file, factorType, lazy);
     }
   } catch (std::exception &e) {

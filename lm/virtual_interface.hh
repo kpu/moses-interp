@@ -133,6 +133,8 @@ class Model {
     // Prefer to use FullScore.  The context words should be provided in reverse order.
     virtual FullScoreReturn FullScoreForgotState(const WordIndex *context_rbegin, const WordIndex *context_rend, const WordIndex new_word, void *out_state) const = 0;
 
+    virtual void GetState(const WordIndex *context_rbegin, const WordIndex *context_rend, void *out_state) const = 0;
+
     unsigned char Order() const { return order_; }
 
     const Vocabulary &BaseVocabulary() const { return *base_vocab_; }

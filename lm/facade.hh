@@ -32,6 +32,10 @@ template <class Child, class StateT, class VocabularyT> class ModelFacade : publ
           *reinterpret_cast<State*>(out_state));
     }
 
+    void GetState(const WordIndex *context_rbegin, const WordIndex *context_rend, void *out_state) const {
+      return static_cast<const Child*>(this)->GetState(context_rbegin, context_rend, *reinterpret_cast<State*>(out_state));
+    }
+
     // Default Score function calls FullScore.  Model can override this.  
     float Score(const State &in_state, const WordIndex new_word, State &out_state) const {
       return static_cast<const Child*>(this)->FullScore(in_state, new_word, out_state).prob;
