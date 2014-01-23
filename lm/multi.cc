@@ -73,6 +73,8 @@ Model::Model(const char *config_file, ngram::Config config) {
   while (true) {
     try {
       weights_.push_back(file.ReadFloat());
+      assert(!isnan(weights_.back()));
+      UTIL_THROW_IF(weights_.back() < 0.0, util::Exception, "Negative weight " << weights_.back());
     } catch (const util::EndOfFileException &e) { break; } 
     file.SkipSpaces();
     files.resize(files.size() + 1);
@@ -133,11 +135,15 @@ class Mix {
     Mix() : accum_(0.0) {}
 
     void Add(float weight, float value) {
+      assert(!isnan(value));
       accum_ += weight * powf(10.0, value);
+      assert(!isnan(accum_));
     }
 
     float Finish() {
-      return log10(accum_);
+      float ret = log10(accum_);
+      assert(!isnan(ret));
+      return ret;
     }
 
   private:
@@ -156,7 +162,9 @@ FullScoreReturn Model::FullScore(const State &in_state, const WordIndex new_word
   }
   FullScoreReturn ret;
   ret.prob = mix.Finish();
+  ret.rest = ret.prob;
   // Other fields undefined...
+  assert(!isnan(ret.prob));
   return ret;
 }
 
@@ -170,6 +178,8 @@ FullScoreReturn Model::FullScoreForgotState(const WordIndex *context_rbegin, con
   }
   FullScoreReturn ret;
   ret.prob = mix.Finish();
+  ret.rest = ret.prob;
+  assert(!isnan(ret.prob));
   return ret;
 }
 
