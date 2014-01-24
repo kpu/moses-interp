@@ -44,7 +44,7 @@ class EnumerateWrap : public EnumerateVocab {
 
     void NextModel() {
       ++current_model_;
-      assert(current_model_ < models_);
+      assert(current_model_ <= models_);
     }
 
     WordIndex Lookup(const StringPiece &str) {
